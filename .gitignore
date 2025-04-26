@@ -1,0 +1,52 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.vscode/
+
+# Logs
+logs/
+*.log
+logback-test.xml
+
+# Database
+*.db
+*.sql
+*.sqlite
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Compiled files
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Environment files
+.env
+*.properties
+
+# Test files
+test-output/
+test-results/ 
