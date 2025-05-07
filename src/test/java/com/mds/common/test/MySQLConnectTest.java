@@ -1,4 +1,4 @@
-package com.example.test;
+package com.mds.common.test;
 
 import org.junit.Test;
 import org.slf4j.Logger;

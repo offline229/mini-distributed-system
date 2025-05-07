@@ -1,4 +1,4 @@
-package com.example.test;
+package com.mds.common.test;
 
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
