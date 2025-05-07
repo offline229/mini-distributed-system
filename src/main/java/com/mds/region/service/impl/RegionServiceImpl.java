@@ -10,8 +10,8 @@ import com.mds.common.config.SystemConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class RegionServiceImpl implements RegionService {
     private static final Logger logger = LoggerFactory.getLogger(RegionServiceImpl.class);
@@ -221,5 +221,271 @@ public class RegionServiceImpl implements RegionService {
         sql.append(")");
         
         return sql.toString();
+    }
+
+    @Override
+    public boolean insert(String tableName, Map<String, Object> data) {
+        try {
+            logger.info("开始插入数据到表: {}, 数据: {}", tableName, data);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return false;
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("INSERT INTO ").append(tableName).append(" (");
+            sql.append(String.join(", ", data.keySet()));
+            sql.append(") VALUES (");
+            sql.append(String.join(", ", Collections.nCopies(data.size(), "?")));
+            sql.append(")");
+
+            List<Object> params = new ArrayList<>(data.values());
+            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
+            logger.info("数据插入{}: {}", success ? "成功" : "失败", tableName);
+            return success;
+        } catch (Exception e) {
+            logger.error("插入数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean batchInsert(String tableName, List<Map<String, Object>> dataList) {
+        if (dataList == null || dataList.isEmpty()) {
+            logger.warn("批量插入数据为空: {}", tableName);
+            return false;
+        }
+
+        try {
+            logger.info("开始批量插入数据到表: {}, 数据条数: {}", tableName, dataList.size());
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return false;
+            }
+
+            // 获取所有列名
+            Set<String> columns = dataList.get(0).keySet();
+            StringBuilder sql = new StringBuilder();
+            sql.append("INSERT INTO ").append(tableName).append(" (");
+            sql.append(String.join(", ", columns));
+            sql.append(") VALUES ");
+
+            // 构建批量插入的SQL
+            List<String> valuePlaceholders = Collections.nCopies(columns.size(), "?");
+            String rowPlaceholder = "(" + String.join(", ", valuePlaceholders) + ")";
+            sql.append(String.join(", ", Collections.nCopies(dataList.size(), rowPlaceholder)));
+
+            // 收集所有参数
+            List<Object> params = new ArrayList<>();
+            for (Map<String, Object> data : dataList) {
+                for (String column : columns) {
+                    params.add(data.get(column));
+                }
+            }
+
+            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
+            logger.info("批量数据插入{}: {}", success ? "成功" : "失败", tableName);
+            return success;
+        } catch (Exception e) {
+            logger.error("批量插入数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean update(String tableName, Map<String, Object> data, String whereClause) {
+        try {
+            logger.info("开始更新表数据: {}, 数据: {}, 条件: {}", tableName, data, whereClause);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return false;
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("UPDATE ").append(tableName).append(" SET ");
+            sql.append(data.keySet().stream()
+                    .map(key -> key + " = ?")
+                    .collect(Collectors.joining(", ")));
+            if (whereClause != null && !whereClause.trim().isEmpty()) {
+                sql.append(" WHERE ").append(whereClause);
+            }
+
+            List<Object> params = new ArrayList<>(data.values());
+            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
+            logger.info("数据更新{}: {}", success ? "成功" : "失败", tableName);
+            return success;
+        } catch (Exception e) {
+            logger.error("更新数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean delete(String tableName, String whereClause) {
+        try {
+            logger.info("开始删除表数据: {}, 条件: {}", tableName, whereClause);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return false;
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("DELETE FROM ").append(tableName);
+            if (whereClause != null && !whereClause.trim().isEmpty()) {
+                sql.append(" WHERE ").append(whereClause);
+            }
+
+            boolean success = MySQLUtil.executeUpdate(sql.toString());
+            logger.info("数据删除{}: {}", success ? "成功" : "失败", tableName);
+            return success;
+        } catch (Exception e) {
+            logger.error("删除数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> query(String tableName, List<String> columns, String whereClause) {
+        try {
+            logger.info("开始查询表数据: {}, 列: {}, 条件: {}", tableName, columns, whereClause);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return new ArrayList<>();
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT ");
+            sql.append(columns == null || columns.isEmpty() ? "*" : String.join(", ", columns));
+            sql.append(" FROM ").append(tableName);
+            if (whereClause != null && !whereClause.trim().isEmpty()) {
+                sql.append(" WHERE ").append(whereClause);
+            }
+
+            List<Object[]> results = MySQLUtil.executeQuery(sql.toString());
+            List<Map<String, Object>> records = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> record = new HashMap<>();
+                for (int i = 0; i < row.length; i++) {
+                    String columnName = columns != null && i < columns.size() ? 
+                            columns.get(i) : "column" + (i + 1);
+                    record.put(columnName, row[i]);
+                }
+                records.add(record);
+            }
+            logger.info("查询完成，返回记录数: {}", records.size());
+            return records;
+        } catch (Exception e) {
+            logger.error("查询数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> queryWithPagination(String tableName, List<String> columns,
+                                                       String whereClause, int pageNum, int pageSize) {
+        try {
+            logger.info("开始分页查询表数据: {}, 列: {}, 条件: {}, 页码: {}, 每页大小: {}", 
+                    tableName, columns, whereClause, pageNum, pageSize);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return new ArrayList<>();
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT ");
+            sql.append(columns == null || columns.isEmpty() ? "*" : String.join(", ", columns));
+            sql.append(" FROM ").append(tableName);
+            if (whereClause != null && !whereClause.trim().isEmpty()) {
+                sql.append(" WHERE ").append(whereClause);
+            }
+            sql.append(" LIMIT ").append((pageNum - 1) * pageSize).append(", ").append(pageSize);
+
+            List<Object[]> results = MySQLUtil.executeQuery(sql.toString());
+            List<Map<String, Object>> records = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> record = new HashMap<>();
+                for (int i = 0; i < row.length; i++) {
+                    String columnName = columns != null && i < columns.size() ? 
+                            columns.get(i) : "column" + (i + 1);
+                    record.put(columnName, row[i]);
+                }
+                records.add(record);
+            }
+            logger.info("分页查询完成，返回记录数: {}", records.size());
+            return records;
+        } catch (Exception e) {
+            logger.error("分页查询数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public long count(String tableName, String whereClause) {
+        try {
+            logger.info("开始统计表记录数: {}, 条件: {}", tableName, whereClause);
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return 0;
+            }
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT COUNT(*) FROM ").append(tableName);
+            if (whereClause != null && !whereClause.trim().isEmpty()) {
+                sql.append(" WHERE ").append(whereClause);
+            }
+
+            List<Object[]> results = MySQLUtil.executeQuery(sql.toString());
+            if (!results.isEmpty() && results.get(0).length > 0) {
+                Object count = results.get(0)[0];
+                if (count instanceof Number) {
+                    return ((Number) count).longValue();
+                }
+            }
+            return 0;
+        } catch (Exception e) {
+            logger.error("统计记录数失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
+            return 0;
+        }
+    }
+
+    @Override
+    public boolean execute(String sql) {
+        try {
+            logger.info("开始执行SQL: {}", sql);
+            boolean success = MySQLUtil.executeUpdate(sql);
+            logger.info("SQL执行{}", success ? "成功" : "失败");
+            return success;
+        } catch (Exception e) {
+            logger.error("执行SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> executeQuery(String sql) {
+        try {
+            logger.info("开始执行查询SQL: {}", sql);
+            List<Object[]> results = MySQLUtil.executeQuery(sql);
+            List<Map<String, Object>> records = new ArrayList<>();
+            for (Object[] row : results) {
+                Map<String, Object> record = new HashMap<>();
+                for (int i = 0; i < row.length; i++) {
+                    record.put("column" + (i + 1), row[i]);
+                }
+                records.add(record);
+            }
+            logger.info("查询SQL执行完成，返回记录数: {}", records.size());
+            return records;
+        } catch (Exception e) {
+            logger.error("执行查询SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
+            return new ArrayList<>();
+        }
     }
 } 

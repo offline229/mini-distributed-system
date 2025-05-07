@@ -7,6 +7,7 @@ public class RegionInfo implements Serializable {
     private String host;
     private int port;
     private String status; // ONLINE, OFFLINE
+    private long createTime;
     private long lastHeartbeat;
 
     public RegionInfo() {
@@ -16,8 +17,9 @@ public class RegionInfo implements Serializable {
         this.regionId = regionId;
         this.host = host;
         this.port = port;
-        this.status = "OFFLINE";
+        this.createTime = System.currentTimeMillis();
         this.lastHeartbeat = System.currentTimeMillis();
+        this.status = "ACTIVE";
     }
 
     // Getters and Setters
@@ -53,6 +55,14 @@ public class RegionInfo implements Serializable {
         this.status = status;
     }
 
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
     public long getLastHeartbeat() {
         return lastHeartbeat;
     }
@@ -68,6 +78,7 @@ public class RegionInfo implements Serializable {
                 ", host='" + host + '\'' +
                 ", port=" + port +
                 ", status='" + status + '\'' +
+                ", createTime=" + createTime +
                 ", lastHeartbeat=" + lastHeartbeat +
                 '}';
     }
