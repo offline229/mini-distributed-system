@@ -83,13 +83,18 @@ public class MySQLUtil {
             }
             int result = pstmt.executeUpdate();
             logger.debug("SQL执行结果: {}", result);
-            
-            // 对于CREATE TABLE和DROP TABLE操作，即使返回0也认为是成功的
-            if (sql.trim().toUpperCase().startsWith("CREATE TABLE") || 
-                sql.trim().toUpperCase().startsWith("DROP TABLE")) {
-                return true;
+    
+            // 对于CREATE TABLE和DROP TABLE操作进行进一步检查
+            if (sql.trim().toUpperCase().startsWith("CREATE TABLE")) {
+                // 进一步检查表是否已创建
+                return checkIfTableExists(conn, "test_table");
             }
-            
+    
+            if (sql.trim().toUpperCase().startsWith("DROP TABLE")) {
+                // 进一步检查表是否已删除
+                return !checkIfTableExists(conn, "test_table");
+            }
+    
             return result > 0;
         } catch (SQLException e) {
             logger.error("执行更新操作失败: {}, 错误信息: {}", sql, e.getMessage(), e);
@@ -99,7 +104,18 @@ public class MySQLUtil {
             closeConnection(conn);
         }
     }
-
+    
+    // 检查表是否存在
+    private static boolean checkIfTableExists(Connection conn, String tableName) {
+        try (Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery("SHOW TABLES LIKE '" + tableName + "'");
+            return rs.next();
+        } catch (SQLException e) {
+            logger.error("检查表是否存在失败: {}", e.getMessage());
+            return false;
+        }
+    }
+    
     public static List<Object[]> executeQuery(String sql, Object... params) {
         Connection conn = null;
         PreparedStatement pstmt = null;
