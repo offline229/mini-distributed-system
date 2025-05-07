@@ -10,9 +10,9 @@ public class SystemConfig {
     public static final String ZK_TABLE_PATH = ZK_ROOT_PATH + "/tables";
 
     // MySQL配置
-    public static final String MYSQL_URL = "jdbc:mysql://localhost:3306/test";
+    public static final String MYSQL_URL = "jdbc:mysql://localhost:3306/mini_distributed_system?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true";
     public static final String MYSQL_USER = "root";
-    public static final String MYSQL_PASSWORD = "root";
+    public static final String MYSQL_PASSWORD = "64793416zhu";
     public static final int MYSQL_POOL_SIZE = 10;
 
     // 系统配置

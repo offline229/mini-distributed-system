@@ -14,26 +14,37 @@ public class MySQLUtil {
 
     static {
         try {
+            logger.info("正在加载MySQL驱动: {}", DRIVER);
             Class.forName(DRIVER);
+            logger.info("MySQL驱动加载成功");
         } catch (ClassNotFoundException e) {
-            logger.error("MySQL驱动加载失败", e);
+            logger.error("MySQL驱动加载失败: {}", e.getMessage(), e);
         }
     }
 
     public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(
-                SystemConfig.MYSQL_URL,
-                SystemConfig.MYSQL_USER,
-                SystemConfig.MYSQL_PASSWORD
-        );
+        logger.debug("正在连接MySQL数据库: {}", SystemConfig.MYSQL_URL);
+        try {
+            Connection conn = DriverManager.getConnection(
+                    SystemConfig.MYSQL_URL,
+                    SystemConfig.MYSQL_USER,
+                    SystemConfig.MYSQL_PASSWORD
+            );
+            logger.debug("MySQL数据库连接成功");
+            return conn;
+        } catch (SQLException e) {
+            logger.error("MySQL数据库连接失败: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     public static void closeConnection(Connection conn) {
         if (conn != null) {
             try {
                 conn.close();
+                logger.debug("MySQL数据库连接已关闭");
             } catch (SQLException e) {
-                logger.error("关闭数据库连接失败", e);
+                logger.error("关闭MySQL数据库连接失败: {}", e.getMessage(), e);
             }
         }
     }
@@ -42,8 +53,9 @@ public class MySQLUtil {
         if (stmt != null) {
             try {
                 stmt.close();
+                logger.debug("Statement已关闭");
             } catch (SQLException e) {
-                logger.error("关闭Statement失败", e);
+                logger.error("关闭Statement失败: {}", e.getMessage(), e);
             }
         }
     }
@@ -52,8 +64,9 @@ public class MySQLUtil {
         if (rs != null) {
             try {
                 rs.close();
+                logger.debug("ResultSet已关闭");
             } catch (SQLException e) {
-                logger.error("关闭ResultSet失败", e);
+                logger.error("关闭ResultSet失败: {}", e.getMessage(), e);
             }
         }
     }
@@ -62,14 +75,24 @@ public class MySQLUtil {
         Connection conn = null;
         PreparedStatement pstmt = null;
         try {
+            logger.debug("执行更新SQL: {}, 参数: {}", sql, params);
             conn = getConnection();
             pstmt = conn.prepareStatement(sql);
             for (int i = 0; i < params.length; i++) {
                 pstmt.setObject(i + 1, params[i]);
             }
-            return pstmt.executeUpdate() > 0;
+            int result = pstmt.executeUpdate();
+            logger.debug("SQL执行结果: {}", result);
+            
+            // 对于CREATE TABLE和DROP TABLE操作，即使返回0也认为是成功的
+            if (sql.trim().toUpperCase().startsWith("CREATE TABLE") || 
+                sql.trim().toUpperCase().startsWith("DROP TABLE")) {
+                return true;
+            }
+            
+            return result > 0;
         } catch (SQLException e) {
-            logger.error("执行更新操作失败: {}", sql, e);
+            logger.error("执行更新操作失败: {}, 错误信息: {}", sql, e.getMessage(), e);
             return false;
         } finally {
             closeStatement(pstmt);
@@ -83,6 +106,7 @@ public class MySQLUtil {
         ResultSet rs = null;
         List<Object[]> result = new ArrayList<>();
         try {
+            logger.debug("执行查询SQL: {}, 参数: {}", sql, params);
             conn = getConnection();
             pstmt = conn.prepareStatement(sql);
             for (int i = 0; i < params.length; i++) {
@@ -98,9 +122,10 @@ public class MySQLUtil {
                 }
                 result.add(row);
             }
+            logger.debug("查询结果行数: {}", result.size());
             return result;
         } catch (SQLException e) {
-            logger.error("执行查询操作失败: {}", sql, e);
+            logger.error("执行查询操作失败: {}, 错误信息: {}", sql, e.getMessage(), e);
             return new ArrayList<>();
         } finally {
             closeResultSet(rs);
