@@ -6,7 +6,8 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-
+// 检测是否能够连接到本地的mysql的数据库
+// 更改为自己的密码配置
 public class MySQLConnectTest {
     private static final Logger logger = LoggerFactory.getLogger(MySQLConnectTest.class);
     private static final String MYSQL_URL = "jdbc:mysql://localhost:3306/test";

@@ -3,7 +3,7 @@ package com.mds.common.test;
 import com.mds.common.config.SystemConfig;
 import org.junit.Test;
 import static org.junit.Assert.*;
-
+// 检测配置文件的值是否非空
 public class ConfigTest {
     @Test
     public void testZooKeeperConfig() {

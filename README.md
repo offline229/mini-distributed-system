@@ -27,17 +27,17 @@ mini-distributed-system/
 ├── src/
 │   ├── main/
 │   │   ├── java/
-│   │   │   └── com/example/
+│   │   │   └── com/mds/
 │   │   │       ├── common/     # 公共组件
 │   │   │       ├── master/     # 主节点
 │   │   │       ├── region/     # 区域节点
 │   │   │       └── client/     # 客户端
 │   │   └── resources/          # 配置文件
 ├── test/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/          # 测试代码
-│   │   │   └── resources/     # 测试配置
+│   ├── java/com/mds
+│   │   ├── common/test
+│   │   │   ├── xxxx.java       # 测试代码
+│   └── resources/              # 配置文件
 └── pom.xml                     # Maven配置
 ```
 
@@ -64,7 +64,7 @@ mini-distributed-system/
    ```
 3. 配置数据库连接：
    - 用户名：root
-   - 密码：root
+   - 密码：自行修改
    - 数据库：test
    - 端口：3306
 
@@ -81,6 +81,7 @@ mini-distributed-system/
    ```bash
    bin/zkServer.cmd
    ```
+   或直接点击该文件启动
 
 ### 运行测试
 1. 确保ZooKeeper和MySQL服务已启动

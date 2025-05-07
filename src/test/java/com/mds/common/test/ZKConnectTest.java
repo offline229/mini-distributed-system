@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CountDownLatch;
-
+// 检测是否能够连接到本地的ZooKeeper
 public class ZKConnectTest {
     private static final Logger logger = LoggerFactory.getLogger(ZKConnectTest.class);
     private static final String ZK_ADDRESS = "localhost:2181";

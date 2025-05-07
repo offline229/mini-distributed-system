@@ -6,7 +6,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import static org.junit.Assert.*;
-
+// 检测common包中的ZookeeperUtil类是否能够正常工作
 public class SimpleZkTest {
     private ZookeeperUtil zkUtil;
     private static final String TEST_PATH = "/test";
