@@ -45,7 +45,7 @@ public class RegionServiceTest {
     public void testRegister() {
         RegionInfo regionInfo = new RegionInfo(TEST_REGION_ID, TEST_HOST, TEST_PORT);
         assertTrue(regionService.register(regionInfo));
-        
+
         RegionInfo retrievedInfo = regionService.getRegionInfo(TEST_REGION_ID);
         assertNotNull(retrievedInfo);
         assertEquals(TEST_REGION_ID, retrievedInfo.getRegionId());
@@ -57,9 +57,9 @@ public class RegionServiceTest {
     public void testHeartbeat() {
         RegionInfo regionInfo = new RegionInfo(TEST_REGION_ID, TEST_HOST, TEST_PORT);
         regionService.register(regionInfo);
-        
+
         assertTrue(regionService.heartbeat(TEST_REGION_ID));
-        
+
         RegionInfo retrievedInfo = regionService.getRegionInfo(TEST_REGION_ID);
         assertNotNull(retrievedInfo);
         assertTrue(retrievedInfo.getLastHeartbeat() > 0);
@@ -69,7 +69,7 @@ public class RegionServiceTest {
     public void testGetAllRegions() {
         RegionInfo regionInfo = new RegionInfo(TEST_REGION_ID, TEST_HOST, TEST_PORT);
         regionService.register(regionInfo);
-        
+
         List<RegionInfo> regions = regionService.getAllRegions();
         assertNotNull(regions);
         assertFalse(regions.isEmpty());
@@ -80,23 +80,22 @@ public class RegionServiceTest {
     public void testCreateAndDropTable() {
         // 创建表
         TableInfo tableInfo = new TableInfo(
-            "test_table",
-            TEST_REGION_ID,
-            Arrays.asList("id", "name", "age"),
-            "id"
-        );
-        
+                "test_table",
+                TEST_REGION_ID,
+                Arrays.asList("id", "name", "age"),
+                "id");
+
         assertTrue(regionService.createTable(tableInfo));
-        
+
         // 验证表信息
         TableInfo retrievedTable = regionService.getTableInfo("test_table");
         assertNotNull(retrievedTable);
         assertEquals("test_table", retrievedTable.getTableName());
         assertEquals(TEST_REGION_ID, retrievedTable.getRegionId());
-        
+
         // 删除表
         assertTrue(regionService.dropTable("test_table"));
-        
+
         // 验证表已被删除
         assertNull(regionService.getTableInfo("test_table"));
     }
@@ -105,13 +104,12 @@ public class RegionServiceTest {
     public void testGetTablesByRegion() {
         // 创建测试表
         TableInfo tableInfo = new TableInfo(
-            "test_table",
-            TEST_REGION_ID,
-            Arrays.asList("id", "name", "age"),
-            "id"
-        );
+                "test_table",
+                TEST_REGION_ID,
+                Arrays.asList("id", "name", "age"),
+                "id");
         regionService.createTable(tableInfo);
-        
+
         // 获取区域节点上的表
         List<TableInfo> tables = regionService.getTablesByRegion(TEST_REGION_ID);
         assertNotNull(tables);
@@ -174,17 +172,17 @@ public class RegionServiceTest {
             assertTrue(regionService.batchInsert(TEST_TABLE_NAME, batchData));
 
             // 测试查询数据
-            List<Map<String, Object>> results = regionService.query(TEST_TABLE_NAME, 
+            List<Map<String, Object>> results = regionService.query(TEST_TABLE_NAME,
                     Arrays.asList("id", "name", "age"), null);
             assertEquals(5, results.size());
 
             // 测试条件查询
-            results = regionService.query(TEST_TABLE_NAME, 
+            results = regionService.query(TEST_TABLE_NAME,
                     Arrays.asList("id", "name"), "age > '22'");
             assertEquals(4, results.size());
 
             // 测试分页查询
-            results = regionService.queryWithPagination(TEST_TABLE_NAME, 
+            results = regionService.queryWithPagination(TEST_TABLE_NAME,
                     Arrays.asList("id", "name", "age"), null, 1, 2);
             assertEquals(2, results.size());
 
@@ -194,7 +192,7 @@ public class RegionServiceTest {
             assertTrue(regionService.update(TEST_TABLE_NAME, updateData, "id = '1'"));
 
             // 验证更新结果
-            results = regionService.query(TEST_TABLE_NAME, 
+            results = regionService.query(TEST_TABLE_NAME,
                     Arrays.asList("age"), "id = '1'");
             assertEquals("30", results.get(0).get("age"));
 
@@ -258,7 +256,7 @@ public class RegionServiceTest {
         try {
             // 测试更新路由信息
             assertTrue(regionService.updateRouteInfo());
-            
+
             // 验证表路由信息已更新
             TableInfo updatedTable = regionService.getTableInfo(TEST_TABLE_NAME);
             assertNotNull(updatedTable);
@@ -283,7 +281,7 @@ public class RegionServiceTest {
         try {
             // 测试报告表分布
             assertTrue(regionService.reportTableDistribution());
-            
+
             // 验证表分布信息已报告
             List<TableInfo> tables = regionService.getTablesByRegion(TEST_REGION_ID);
             assertFalse(tables.isEmpty());
@@ -341,4 +339,4 @@ public class RegionServiceTest {
         String invalidCommand = "INVALID_COMMAND";
         assertFalse(regionService.handleMasterCommand(invalidCommand));
     }
-} 
+}

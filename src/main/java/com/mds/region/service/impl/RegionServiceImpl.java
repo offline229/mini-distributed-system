@@ -146,7 +146,7 @@ public class RegionServiceImpl implements RegionService {
                 logger.warn("表已存在: {}", tableInfo.getTableName());
                 return true;
             }
-            
+
             // 创建表
             String createTableSQL = generateCreateTableSQL(tableInfo);
             logger.debug("创建表SQL: {}", createTableSQL);
@@ -177,7 +177,7 @@ public class RegionServiceImpl implements RegionService {
                 logger.warn("表不存在: {}", tableName);
                 return true;
             }
-            
+
             // 删除表
             String dropTableSQL = "DROP TABLE IF EXISTS " + tableName;
             logger.debug("删除表SQL: {}", dropTableSQL);
@@ -241,16 +241,16 @@ public class RegionServiceImpl implements RegionService {
     private String generateCreateTableSQL(TableInfo tableInfo) {
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE TABLE IF NOT EXISTS ").append(tableInfo.getTableName()).append(" (");
-        
+
         // 添加列定义
         for (String column : tableInfo.getColumns()) {
             sql.append(column).append(" VARCHAR(255), ");
         }
-        
+
         // 添加主键
         sql.append("PRIMARY KEY (").append(tableInfo.getPrimaryKey()).append(")");
         sql.append(")");
-        
+
         return sql.toString();
     }
 
@@ -402,8 +402,7 @@ public class RegionServiceImpl implements RegionService {
             for (Object[] row : results) {
                 Map<String, Object> record = new HashMap<>();
                 for (int i = 0; i < row.length; i++) {
-                    String columnName = columns != null && i < columns.size() ? 
-                            columns.get(i) : "column" + (i + 1);
+                    String columnName = columns != null && i < columns.size() ? columns.get(i) : "column" + (i + 1);
                     record.put(columnName, row[i]);
                 }
                 records.add(record);
@@ -418,9 +417,9 @@ public class RegionServiceImpl implements RegionService {
 
     @Override
     public List<Map<String, Object>> queryWithPagination(String tableName, List<String> columns,
-                                                       String whereClause, int pageNum, int pageSize) {
+            String whereClause, int pageNum, int pageSize) {
         try {
-            logger.info("开始分页查询表数据: {}, 列: {}, 条件: {}, 页码: {}, 每页大小: {}", 
+            logger.info("开始分页查询表数据: {}, 列: {}, 条件: {}, 页码: {}, 每页大小: {}",
                     tableName, columns, whereClause, pageNum, pageSize);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
@@ -442,8 +441,7 @@ public class RegionServiceImpl implements RegionService {
             for (Object[] row : results) {
                 Map<String, Object> record = new HashMap<>();
                 for (int i = 0; i < row.length; i++) {
-                    String columnName = columns != null && i < columns.size() ? 
-                            columns.get(i) : "column" + (i + 1);
+                    String columnName = columns != null && i < columns.size() ? columns.get(i) : "column" + (i + 1);
                     record.put(columnName, row[i]);
                 }
                 records.add(record);
@@ -599,7 +597,7 @@ public class RegionServiceImpl implements RegionService {
     public boolean executeDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
         try {
             logger.info("开始执行数据迁移: 从{}到{}, 表: {}", sourceRegionId, targetRegionId, tableName);
-            
+
             // 1. 获取表信息
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
@@ -614,8 +612,8 @@ public class RegionServiceImpl implements RegionService {
                 int offset = 0;
                 while (true) {
                     List<Map<String, Object>> batchData = queryWithPagination(
-                        tableName, null, null, offset / batchSize + 1, batchSize);
-                    
+                            tableName, null, null, offset / batchSize + 1, batchSize);
+
                     if (batchData.isEmpty()) {
                         break;
                     }
@@ -623,11 +621,11 @@ public class RegionServiceImpl implements RegionService {
                     // 发送数据到目标Region
                     // TODO: 实现数据发送逻辑
                     logger.info("导出数据批次: {}, 大小: {}", offset / batchSize + 1, batchData.size());
-                    
+
                     offset += batchSize;
                 }
             }
-            
+
             // 3. 如果是目标Region，导入数据
             if (targetRegionId.equals(regionId)) {
                 // TODO: 实现数据接收和导入逻辑
@@ -654,4 +652,4 @@ public class RegionServiceImpl implements RegionService {
             Thread.currentThread().interrupt();
         }
     }
-} 
+}
