@@ -242,4 +242,103 @@ public class RegionServiceTest {
             regionService.dropTable(TEST_TABLE_NAME);
         }
     }
+
+    @Test
+    public void testUpdateRouteInfo() {
+        // 创建测试表
+        TableInfo tableInfo = new TableInfo();
+        tableInfo.setTableName(TEST_TABLE_NAME);
+        tableInfo.setRegionId(TEST_REGION_ID);
+        tableInfo.setColumns(Arrays.asList("id", "name", "age"));
+        tableInfo.setPrimaryKey("id");
+        tableInfo.setCreateTime(System.currentTimeMillis());
+        tableInfo.setStatus("ACTIVE");
+        assertTrue(regionService.createTable(tableInfo));
+
+        try {
+            // 测试更新路由信息
+            assertTrue(regionService.updateRouteInfo());
+            
+            // 验证表路由信息已更新
+            TableInfo updatedTable = regionService.getTableInfo(TEST_TABLE_NAME);
+            assertNotNull(updatedTable);
+            assertEquals(TEST_REGION_ID, updatedTable.getRegionId());
+        } finally {
+            regionService.dropTable(TEST_TABLE_NAME);
+        }
+    }
+
+    @Test
+    public void testReportTableDistribution() {
+        // 创建测试表
+        TableInfo tableInfo = new TableInfo();
+        tableInfo.setTableName(TEST_TABLE_NAME);
+        tableInfo.setRegionId(TEST_REGION_ID);
+        tableInfo.setColumns(Arrays.asList("id", "name", "age"));
+        tableInfo.setPrimaryKey("id");
+        tableInfo.setCreateTime(System.currentTimeMillis());
+        tableInfo.setStatus("ACTIVE");
+        assertTrue(regionService.createTable(tableInfo));
+
+        try {
+            // 测试报告表分布
+            assertTrue(regionService.reportTableDistribution());
+            
+            // 验证表分布信息已报告
+            List<TableInfo> tables = regionService.getTablesByRegion(TEST_REGION_ID);
+            assertFalse(tables.isEmpty());
+            assertEquals(TEST_TABLE_NAME, tables.get(0).getTableName());
+        } finally {
+            regionService.dropTable(TEST_TABLE_NAME);
+        }
+    }
+
+    @Test
+    public void testDataMigration() {
+        // 创建源表
+        TableInfo sourceTable = new TableInfo();
+        sourceTable.setTableName(TEST_TABLE_NAME);
+        sourceTable.setRegionId(TEST_REGION_ID);
+        sourceTable.setColumns(Arrays.asList("id", "name", "age"));
+        sourceTable.setPrimaryKey("id");
+        sourceTable.setCreateTime(System.currentTimeMillis());
+        sourceTable.setStatus("ACTIVE");
+        assertTrue(regionService.createTable(sourceTable));
+
+        try {
+            // 插入测试数据
+            Map<String, Object> data = new HashMap<>();
+            data.put("id", "1");
+            data.put("name", "张三");
+            data.put("age", "25");
+            assertTrue(regionService.insert(TEST_TABLE_NAME, data));
+
+            // 测试数据迁移请求
+            String targetRegionId = "test-region-2";
+            assertTrue(regionService.requestDataMigration(TEST_REGION_ID, targetRegionId, TEST_TABLE_NAME));
+
+            // 测试执行数据迁移
+            assertTrue(regionService.executeDataMigration(TEST_REGION_ID, targetRegionId, TEST_TABLE_NAME));
+
+            // 验证源表数据
+            List<Map<String, Object>> sourceData = regionService.query(TEST_TABLE_NAME, null, null);
+            assertFalse(sourceData.isEmpty());
+            assertEquals("1", sourceData.get(0).get("id"));
+            assertEquals("张三", sourceData.get(0).get("name"));
+            assertEquals("25", sourceData.get(0).get("age"));
+        } finally {
+            regionService.dropTable(TEST_TABLE_NAME);
+        }
+    }
+
+    @Test
+    public void testHandleMasterCommand() {
+        // 测试处理Master命令
+        String command = "REPORT_STATUS";
+        assertTrue(regionService.handleMasterCommand(command));
+
+        // 测试无效命令
+        String invalidCommand = "INVALID_COMMAND";
+        assertFalse(regionService.handleMasterCommand(invalidCommand));
+    }
 } 

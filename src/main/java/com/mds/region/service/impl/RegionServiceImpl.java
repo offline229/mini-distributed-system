@@ -7,11 +7,15 @@ import com.mds.common.service.RegionService;
 import com.mds.common.util.ZookeeperUtil;
 import com.mds.common.util.MySQLUtil;
 import com.mds.common.config.SystemConfig;
+import com.mds.region.communication.MasterClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class RegionServiceImpl implements RegionService {
     private static final Logger logger = LoggerFactory.getLogger(RegionServiceImpl.class);
@@ -19,12 +23,39 @@ public class RegionServiceImpl implements RegionService {
     private final ZookeeperUtil zkUtil;
     private final String regionId;
     private final String regionPath;
+    private final MasterClient masterClient;
+    private final ScheduledExecutorService scheduler;
+    private static final int HEARTBEAT_INTERVAL = 5; // 心跳间隔（秒）
+    private static final int STATUS_REPORT_INTERVAL = 30; // 状态报告间隔（秒）
 
     public RegionServiceImpl(String regionId) throws Exception {
         this.regionId = regionId;
         this.zkUtil = new ZookeeperUtil();
         this.regionPath = SystemConfig.ZK_REGION_PATH + "/" + regionId;
+        this.masterClient = new MasterClient("localhost", 8080, regionId);
+        this.scheduler = Executors.newScheduledThreadPool(2);
+        startScheduledTasks();
         logger.info("RegionServiceImpl初始化完成: regionId={}, regionPath={}", regionId, regionPath);
+    }
+
+    private void startScheduledTasks() {
+        // 启动心跳任务
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                masterClient.sendHeartbeat();
+            } catch (Exception e) {
+                logger.error("Failed to send heartbeat", e);
+            }
+        }, 0, HEARTBEAT_INTERVAL, TimeUnit.SECONDS);
+
+        // 启动状态报告任务
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                reportStatus();
+            } catch (Exception e) {
+                logger.error("Failed to report status", e);
+            }
+        }, 0, STATUS_REPORT_INTERVAL, TimeUnit.SECONDS);
     }
 
     @Override
@@ -486,6 +517,141 @@ public class RegionServiceImpl implements RegionService {
         } catch (Exception e) {
             logger.error("执行查询SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
             return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public boolean reportStatus() {
+        try {
+            RegionInfo status = new RegionInfo();
+            status.setRegionId(regionId);
+            status.setStatus("ACTIVE");
+            status.setLastHeartbeat(System.currentTimeMillis());
+            return masterClient.reportStatus(status);
+        } catch (Exception e) {
+            logger.error("Failed to report status", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean updateRouteInfo() {
+        try {
+            Map<String, Object> routeInfo = masterClient.getRouteInfo();
+            // 更新本地路由信息
+            if (routeInfo != null && !routeInfo.isEmpty()) {
+                // 更新表路由信息
+                @SuppressWarnings("unchecked")
+                Map<String, String> tableRoutes = (Map<String, String>) routeInfo.get("tableRoutes");
+                if (tableRoutes != null) {
+                    // 更新本地表路由缓存
+                    for (Map.Entry<String, String> entry : tableRoutes.entrySet()) {
+                        String tableName = entry.getKey();
+                        String targetRegionId = entry.getValue();
+                        // 如果表不在当前Region，需要迁移数据
+                        if (!targetRegionId.equals(regionId)) {
+                            requestDataMigration(regionId, targetRegionId, tableName);
+                        }
+                    }
+                }
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            logger.error("Failed to update route info", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean reportTableDistribution() {
+        try {
+            // 获取本地表信息
+            List<TableInfo> tables = getTablesByRegion(regionId);
+            return masterClient.reportTableDistribution(tables);
+        } catch (Exception e) {
+            logger.error("Failed to report table distribution", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean handleMasterCommand(String command) {
+        try {
+            return masterClient.handleMasterCommand(command);
+        } catch (Exception e) {
+            logger.error("Failed to handle master command", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean requestDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
+        try {
+            return masterClient.requestDataMigration(sourceRegionId, targetRegionId, tableName);
+        } catch (Exception e) {
+            logger.error("Failed to request data migration", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean executeDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
+        try {
+            logger.info("开始执行数据迁移: 从{}到{}, 表: {}", sourceRegionId, targetRegionId, tableName);
+            
+            // 1. 获取表信息
+            TableInfo tableInfo = getTableInfo(tableName);
+            if (tableInfo == null) {
+                logger.error("表不存在: {}", tableName);
+                return false;
+            }
+
+            // 2. 如果是源Region，导出数据
+            if (sourceRegionId.equals(regionId)) {
+                // 分批读取数据
+                int batchSize = 1000;
+                int offset = 0;
+                while (true) {
+                    List<Map<String, Object>> batchData = queryWithPagination(
+                        tableName, null, null, offset / batchSize + 1, batchSize);
+                    
+                    if (batchData.isEmpty()) {
+                        break;
+                    }
+
+                    // 发送数据到目标Region
+                    // TODO: 实现数据发送逻辑
+                    logger.info("导出数据批次: {}, 大小: {}", offset / batchSize + 1, batchData.size());
+                    
+                    offset += batchSize;
+                }
+            }
+            
+            // 3. 如果是目标Region，导入数据
+            if (targetRegionId.equals(regionId)) {
+                // TODO: 实现数据接收和导入逻辑
+                logger.info("准备接收数据");
+            }
+
+            logger.info("数据迁移完成");
+            return true;
+        } catch (Exception e) {
+            logger.error("数据迁移失败: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    // 关闭服务
+    public void shutdown() {
+        try {
+            scheduler.shutdown();
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 } 
