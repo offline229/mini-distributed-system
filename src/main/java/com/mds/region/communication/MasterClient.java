@@ -15,12 +15,28 @@ public class MasterClient {
     private final int masterPort;
     private final String regionId;
     private final Map<String, Object> routeCache;
+    private boolean connected;
 
     public MasterClient(String masterHost, int masterPort, String regionId) {
         this.masterHost = masterHost;
         this.masterPort = masterPort;
         this.regionId = regionId;
         this.routeCache = new ConcurrentHashMap<>();
+        this.connected = false;
+    }
+
+    public boolean isConnected() {
+        return connected;
+    }
+
+    public void close() {
+        try {
+            // TODO: 实现关闭连接的逻辑
+            connected = false;
+            logger.info("MasterClient已关闭");
+        } catch (Exception e) {
+            logger.error("关闭MasterClient失败", e);
+        }
     }
 
     /**

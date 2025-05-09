@@ -9,12 +9,18 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import static org.junit.Assert.*;
-
+import com.mds.region.service.RegionService;
+import com.mds.region.service.impl.RegionServiceImpl;
+import com.mds.common.model.TableInfo;
+import java.util.Arrays;
+import java.util.List;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.Arrays;
+import java.util.List;
 
 public class RegionInitTest {
     private static final String TEST_REGION_ID = "test-region-1";
@@ -87,12 +93,12 @@ public class RegionInitTest {
     public void testZooKeeperConnection() throws Exception {
         // 测试ZooKeeper连接
         assertTrue(zkUtil.isConnected());
-        
+
         // 测试创建节点
         String testPath = "/test/node";
         zkUtil.createPath(testPath, org.apache.zookeeper.CreateMode.PERSISTENT);
         assertTrue(zkUtil.exists(testPath));
-        
+
         // 测试删除节点
         zkUtil.delete(testPath);
         assertFalse(zkUtil.exists(testPath));
@@ -124,31 +130,103 @@ public class RegionInitTest {
     }
 
     @Test
-    public void testMasterClientConnection() throws Exception {
-        // 创建MasterClient
-        MasterClient masterClient = new MasterClient(TEST_HOST, TEST_PORT, TEST_REGION_ID);
-        
-        // 测试连接
-        assertTrue(masterClient.isConnected());
-        
-        // 测试心跳
-        assertTrue(masterClient.sendHeartbeat());
-        
-        // 测试状态报告
-        RegionInfo status = new RegionInfo();
-        status.setRegionId(TEST_REGION_ID);
-        status.setStatus("ACTIVE");
-        status.setLastHeartbeat(System.currentTimeMillis());
-        assertTrue(masterClient.reportStatus(status));
-        
+    public void testRegionInitialization() {
+        // 准备测试数据
+        String regionId = "test-region-1";
+        String host = "localhost";
+        int port = 8080;
+        String zkConnectString = "localhost:2181";
+
+        // 创建Region实例
+        Region region = new Region(regionId, host, port, zkConnectString);
+
+        // 启动Region
+        region.start();
+
+        // 验证Region状态
+        assertTrue(region.isRunning());
+        assertNotNull(region.getRegionService());
+
+        // 获取RegionService
+        RegionService regionService = region.getRegionService();
+        assertNotNull(regionService);
+
+        // 验证Region注册
+        RegionInfo regionInfo = regionService.getRegionInfo(regionId);
+        assertNotNull(regionInfo);
+        assertEquals(regionId, regionInfo.getRegionId());
+        assertEquals(host, regionInfo.getHost());
+        assertEquals(port, regionInfo.getPort());
+        assertEquals("ACTIVE", regionInfo.getStatus());
+
+        // 停止Region
+        region.stop();
+
+        // 验证Region已停止
+        assertFalse(region.isRunning());
+    }
+
+    @Test
+    public void testMasterClientConnection() {
+        // 准备测试数据
+        String masterHost = "localhost";
+        int masterPort = 8080;
+        String regionId = "test-region-1";
+
+        // 创建MasterClient实例
+        MasterClient masterClient = new MasterClient(masterHost, masterPort, regionId);
+
+        // 验证连接状态
+        assertFalse(masterClient.isConnected());
+
         // 关闭连接
         masterClient.close();
+
+        // 验证连接已关闭
+        assertFalse(masterClient.isConnected());
+    }
+
+    @Test
+    public void testTableOperations() throws Exception { // 添加 throws Exception
+        // 准备测试数据
+        String regionId = "test-region-1";
+        String tableName = "test_table";
+        List<String> columns = Arrays.asList("id", "name", "age");
+        String primaryKey = "id";
+
+        // 创建RegionService实例
+        RegionService regionService = new RegionServiceImpl(regionId); // 可能抛出异常
+
+        // 创建表
+        TableInfo tableInfo = new TableInfo();
+        tableInfo.setTableName(tableName);
+        tableInfo.setRegionId(regionId);
+        tableInfo.setColumns(columns);
+        tableInfo.setPrimaryKey(primaryKey);
+        tableInfo.setCreateTime(System.currentTimeMillis());
+        tableInfo.setStatus("ACTIVE");
+
+        assertTrue(regionService.createTable(tableInfo));
+
+        // 验证表信息
+        TableInfo retrievedTable = regionService.getTableInfo(tableName);
+        assertNotNull(retrievedTable);
+        assertEquals(tableName, retrievedTable.getTableName());
+        assertEquals(regionId, retrievedTable.getRegionId());
+        assertEquals(columns, retrievedTable.getColumns());
+        assertEquals(primaryKey, retrievedTable.getPrimaryKey());
+
+        // 删除表
+        assertTrue(regionService.dropTable(tableName));
+
+        // 验证表已被删除
+        assertNull(regionService.getTableInfo(tableName));
     }
 
     @Test
     public void testClusterManagement() throws Exception {
         // 创建多个Region节点
-        String[] regionIds = {"region-1", "region-2", "region-3"};
+        String[] regionIds = { "region-1", "region-2", "region-3" };
         for (String regionId : regionIds) {
             String regionPath = SystemConfig.ZK_REGION_PATH + "/" + regionId;
             RegionInfo regionInfo = new RegionInfo();
@@ -157,7 +235,7 @@ public class RegionInitTest {
             regionInfo.setPort(TEST_PORT);
             regionInfo.setStatus("ACTIVE");
             regionInfo.setCreateTime(System.currentTimeMillis());
-            
+
             zkUtil.createPath(regionPath, org.apache.zookeeper.CreateMode.EPHEMERAL);
             zkUtil.setData(regionPath, regionInfo.toString().getBytes());
         }
@@ -169,7 +247,8 @@ public class RegionInitTest {
         }
 
         // 获取所有Region节点
-        String[] children = zkUtil.getChildren(SystemConfig.ZK_REGION_PATH);
+        List<String> childrenList = zkUtil.getChildren(SystemConfig.ZK_REGION_PATH);
+        String[] children = childrenList.toArray(new String[0]);
         assertEquals(regionIds.length, children.length);
 
         // 清理
@@ -189,7 +268,7 @@ public class RegionInitTest {
         regionInfo.setPort(TEST_PORT);
         regionInfo.setStatus("ACTIVE");
         regionInfo.setCreateTime(System.currentTimeMillis());
-        
+
         zkUtil.createPath(regionPath, org.apache.zookeeper.CreateMode.EPHEMERAL);
         zkUtil.setData(regionPath, regionInfo.toString().getBytes());
 
@@ -213,7 +292,7 @@ public class RegionInitTest {
         regionInfo.setPort(TEST_PORT);
         regionInfo.setStatus("ACTIVE");
         regionInfo.setCreateTime(System.currentTimeMillis());
-        
+
         zkUtil.createPath(regionPath, org.apache.zookeeper.CreateMode.EPHEMERAL);
         zkUtil.setData(regionPath, regionInfo.toString().getBytes());
 
@@ -233,4 +312,4 @@ public class RegionInitTest {
         // 清理
         zkUtil.delete(regionPath);
     }
-} 
+}

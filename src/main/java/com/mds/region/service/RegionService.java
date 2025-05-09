@@ -7,6 +7,90 @@ import java.util.Map;
 
 public interface RegionService {
     // ... 现有方法 ...
+    /**
+     * 插入数据
+     * 
+     * @param tableName 表名
+     * @param data      数据
+     * @return 插入结果
+     */
+    boolean insert(String tableName, Map<String, Object> data);
+
+    /**
+     * 批量插入数据
+     * 
+     * @param tableName 表名
+     * @param dataList  数据列表
+     * @return 插入结果
+     */
+    boolean batchInsert(String tableName, List<Map<String, Object>> dataList);
+
+    /**
+     * 更新数据
+     * 
+     * @param tableName   表名
+     * @param data        数据
+     * @param whereClause 条件语句
+     * @return 更新结果
+     */
+    boolean update(String tableName, Map<String, Object> data, String whereClause);
+
+    /**
+     * 删除数据
+     * 
+     * @param tableName   表名
+     * @param whereClause 条件语句
+     * @return 删除结果
+     */
+    boolean delete(String tableName, String whereClause);
+
+    /**
+     * 查询数据
+     * 
+     * @param tableName   表名
+     * @param columns     列名列表
+     * @param whereClause 条件语句
+     * @return 查询结果
+     */
+    List<Map<String, Object>> query(String tableName, List<String> columns, String whereClause);
+
+    /**
+     * 分页查询数据
+     * 
+     * @param tableName   表名
+     * @param columns     列名列表
+     * @param whereClause 条件语句
+     * @param pageNum     页码
+     * @param pageSize    每页大小
+     * @return 查询结果
+     */
+    List<Map<String, Object>> queryWithPagination(String tableName, List<String> columns,
+            String whereClause, int pageNum, int pageSize);
+
+    /**
+     * 统计记录数
+     * 
+     * @param tableName   表名
+     * @param whereClause 条件语句
+     * @return 记录数
+     */
+    long count(String tableName, String whereClause);
+
+    /**
+     * 执行SQL语句
+     * 
+     * @param sql SQL语句
+     * @return 执行结果
+     */
+    boolean execute(String sql);
+
+    /**
+     * 执行查询SQL语句
+     * 
+     * @param sql SQL语句
+     * @return 查询结果
+     */
+    List<Map<String, Object>> executeQuery(String sql);
 
     // 与Master交互的方法
     /**
@@ -114,4 +198,11 @@ public interface RegionService {
      * @return 表信息列表
      */
     List<TableInfo> getTablesByRegion(String regionId);
+
+    /**
+     * 关闭区域服务
+     * 用于优雅地关闭服务，清理资源
+     */
+    void shutdown();
+
 }

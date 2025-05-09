@@ -1,66 +1,85 @@
 package com.mds.region;
 
+import com.mds.common.model.RegionInfo;
 import com.mds.common.util.ZookeeperUtil;
-import com.mds.region.communication.RegionServer;
-import com.mds.region.processor.RegionProcessor;
+import com.mds.common.config.SystemConfig;
+import com.mds.region.service.RegionService;
+import com.mds.region.service.impl.RegionServiceImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Region {
     private static final Logger logger = LoggerFactory.getLogger(Region.class);
-    
     private final String regionId;
     private final String host;
     private final int port;
     private final String zkConnectString;
-    private final ZookeeperUtil zkUtil;
-    private final RegionServer server;
-    private final RegionProcessor processor;
+    private ZookeeperUtil zkUtil;
+    private RegionService regionService;
+    private boolean isRunning;
 
     public Region(String regionId, String host, int port, String zkConnectString) {
         this.regionId = regionId;
         this.host = host;
         this.port = port;
         this.zkConnectString = zkConnectString;
-        this.zkUtil = new ZookeeperUtil();
-        this.server = new RegionServer(regionId, host, port, zkUtil);
-        this.processor = new RegionProcessor(regionId);
+        this.isRunning = false;
     }
 
-    public void start() throws Exception {
-        logger.info("Starting Region: {}", regionId);
-        
-        // 连接ZooKeeper
-        zkUtil.connect(zkConnectString, 5000);
-        logger.info("Connected to ZooKeeper: {}", zkConnectString);
-        
-        // 启动处理器
-        processor.start();
-        logger.info("Region processor started");
-        
-        // 启动服务器
-        server.start();
-        logger.info("Region server started");
-        
-        logger.info("Region {} started successfully", regionId);
+    public void start() {
+        try {
+            logger.info("开始启动Region: {}", regionId);
+            
+            // 初始化ZooKeeper连接
+            zkUtil = new ZookeeperUtil();
+            zkUtil.connect(zkConnectString, 5000);
+            
+            // 初始化Region服务
+            regionService = new RegionServiceImpl(regionId);
+            
+            // 注册Region信息
+            RegionInfo regionInfo = new RegionInfo();
+            regionInfo.setRegionId(regionId);
+            regionInfo.setHost(host);
+            regionInfo.setPort(port);
+            regionInfo.setStatus("ACTIVE");
+            regionInfo.setLastHeartbeat(System.currentTimeMillis());
+            
+            if (!regionService.register(regionInfo)) {
+                throw new RuntimeException("Region注册失败");
+            }
+            
+            isRunning = true;
+            logger.info("Region启动成功: {}", regionId);
+        } catch (Exception e) {
+            logger.error("Region启动失败: {}", e.getMessage(), e);
+            throw new RuntimeException("Region启动失败", e);
+        }
     }
 
     public void stop() {
-        logger.info("Stopping Region: {}", regionId);
-        
-        // 停止服务器
-        server.stop();
-        logger.info("Region server stopped");
-        
-        // 停止处理器
-        processor.stop();
-        logger.info("Region processor stopped");
-        
-        // 关闭ZooKeeper连接
-        zkUtil.close();
-        logger.info("ZooKeeper connection closed");
-        
-        logger.info("Region {} stopped successfully", regionId);
+        try {
+            logger.info("开始停止Region: {}", regionId);
+            if (regionService != null) {
+                regionService.shutdown();
+            }
+            if (zkUtil != null) {
+                zkUtil.close();
+            }
+            isRunning = false;
+            logger.info("Region停止成功: {}", regionId);
+        } catch (Exception e) {
+            logger.error("Region停止失败: {}", e.getMessage(), e);
+            throw new RuntimeException("Region停止失败", e);
+        }
+    }
+
+    public boolean isRunning() {
+        return isRunning;
+    }
+
+    public RegionService getRegionService() {
+        return regionService;
     }
 
     public static void main(String[] args) {

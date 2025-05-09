@@ -149,4 +149,37 @@ public class MySQLUtil {
             closeConnection(conn);
         }
     }
+
+    public static void execute(String sql) throws SQLException {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            logger.error("执行SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    public static List<Object[]> executeQuery(String sql) throws SQLException {
+        List<Object[]> results = new ArrayList<>();
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            ResultSetMetaData metaData = rs.getMetaData();
+            int columnCount = metaData.getColumnCount();
+            
+            while (rs.next()) {
+                Object[] row = new Object[columnCount];
+                for (int i = 0; i < columnCount; i++) {
+                    row[i] = rs.getObject(i + 1);
+                }
+                results.add(row);
+            }
+        } catch (SQLException e) {
+            logger.error("执行查询SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
+            throw e;
+        }
+        return results;
+    }
 } 

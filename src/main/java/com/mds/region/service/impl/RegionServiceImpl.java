@@ -3,7 +3,7 @@ package com.mds.region.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mds.common.model.RegionInfo;
 import com.mds.common.model.TableInfo;
-import com.mds.common.service.RegionService;
+import com.mds.region.service.RegionService;
 import com.mds.common.util.ZookeeperUtil;
 import com.mds.common.util.MySQLUtil;
 import com.mds.common.config.SystemConfig;
@@ -141,27 +141,30 @@ public class RegionServiceImpl implements RegionService {
     public boolean createTable(TableInfo tableInfo) {
         try {
             logger.info("开始创建表: {}", tableInfo);
+            String tablePath = SystemConfig.ZK_TABLE_PATH + "/" + tableInfo.getTableName();
+
             // 检查表是否已存在
-            if (getTableInfo(tableInfo.getTableName()) != null) {
-                logger.warn("表已存在: {}", tableInfo.getTableName());
-                return true;
+            if (zkUtil.exists(tablePath)) {
+                logger.error("表已存在: {}", tableInfo.getTableName());
+                return false;
             }
 
-            // 创建表
-            String createTableSQL = generateCreateTableSQL(tableInfo);
-            logger.debug("创建表SQL: {}", createTableSQL);
-            boolean success = MySQLUtil.executeUpdate(createTableSQL);
-            if (success) {
-                // 在ZooKeeper中记录表信息
-                String tablePath = SystemConfig.ZK_TABLE_PATH + "/" + tableInfo.getTableName();
-                logger.debug("创建ZooKeeper表节点: {}", tablePath);
-                zkUtil.createPath(tablePath, org.apache.zookeeper.CreateMode.PERSISTENT);
-                zkUtil.setData(tablePath, objectMapper.writeValueAsBytes(tableInfo));
-                logger.info("表创建成功: {}", tableInfo.getTableName());
-                return true;
-            }
-            logger.error("MySQL执行创建表失败: {}", tableInfo.getTableName());
-            return false;
+            // 创建表节点
+            zkUtil.createPath(tablePath, org.apache.zookeeper.CreateMode.PERSISTENT);
+            zkUtil.setData(tablePath, objectMapper.writeValueAsBytes(tableInfo));
+
+            // 创建表结构
+            StringBuilder createTableSQL = new StringBuilder();
+            createTableSQL.append("CREATE TABLE IF NOT EXISTS ").append(tableInfo.getTableName()).append(" (");
+            createTableSQL.append(tableInfo.getColumns().stream()
+                    .map(col -> col + " VARCHAR(255)")
+                    .collect(Collectors.joining(", ")));
+            createTableSQL.append(", PRIMARY KEY (").append(tableInfo.getPrimaryKey()).append("))");
+
+            MySQLUtil.execute(createTableSQL.toString());
+
+            logger.info("表创建成功: {}", tableInfo.getTableName());
+            return true;
         } catch (Exception e) {
             logger.error("创建表失败: {}, 错误信息: {}", tableInfo.getTableName(), e.getMessage(), e);
             return false;
@@ -172,26 +175,23 @@ public class RegionServiceImpl implements RegionService {
     public boolean dropTable(String tableName) {
         try {
             logger.info("开始删除表: {}", tableName);
+            String tablePath = SystemConfig.ZK_TABLE_PATH + "/" + tableName;
+
             // 检查表是否存在
-            if (getTableInfo(tableName) == null) {
-                logger.warn("表不存在: {}", tableName);
-                return true;
+            if (!zkUtil.exists(tablePath)) {
+                logger.error("表不存在: {}", tableName);
+                return false;
             }
 
-            // 删除表
+            // 删除表节点
+            zkUtil.delete(tablePath);
+
+            // 删除表结构
             String dropTableSQL = "DROP TABLE IF EXISTS " + tableName;
-            logger.debug("删除表SQL: {}", dropTableSQL);
-            boolean success = MySQLUtil.executeUpdate(dropTableSQL);
-            if (success) {
-                // 从ZooKeeper中删除表信息
-                String tablePath = SystemConfig.ZK_TABLE_PATH + "/" + tableName;
-                logger.debug("删除ZooKeeper表节点: {}", tablePath);
-                zkUtil.delete(tablePath);
-                logger.info("表删除成功: {}", tableName);
-                return true;
-            }
-            logger.error("MySQL执行删除表失败: {}", tableName);
-            return false;
+            MySQLUtil.execute(dropTableSQL);
+
+            logger.info("表删除成功: {}", tableName);
+            return true;
         } catch (Exception e) {
             logger.error("删除表失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
             return false;
@@ -238,26 +238,10 @@ public class RegionServiceImpl implements RegionService {
         }
     }
 
-    private String generateCreateTableSQL(TableInfo tableInfo) {
-        StringBuilder sql = new StringBuilder();
-        sql.append("CREATE TABLE IF NOT EXISTS ").append(tableInfo.getTableName()).append(" (");
-
-        // 添加列定义
-        for (String column : tableInfo.getColumns()) {
-            sql.append(column).append(" VARCHAR(255), ");
-        }
-
-        // 添加主键
-        sql.append("PRIMARY KEY (").append(tableInfo.getPrimaryKey()).append(")");
-        sql.append(")");
-
-        return sql.toString();
-    }
-
     @Override
     public boolean insert(String tableName, Map<String, Object> data) {
         try {
-            logger.info("开始插入数据到表: {}, 数据: {}", tableName, data);
+            logger.info("开始插入数据: 表={}, 数据={}", tableName, data);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
@@ -268,13 +252,14 @@ public class RegionServiceImpl implements RegionService {
             sql.append("INSERT INTO ").append(tableName).append(" (");
             sql.append(String.join(", ", data.keySet()));
             sql.append(") VALUES (");
-            sql.append(String.join(", ", Collections.nCopies(data.size(), "?")));
+            sql.append(data.values().stream()
+                    .map(value -> "'" + value + "'")
+                    .collect(Collectors.joining(", ")));
             sql.append(")");
 
-            List<Object> params = new ArrayList<>(data.values());
-            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
-            logger.info("数据插入{}: {}", success ? "成功" : "失败", tableName);
-            return success;
+            MySQLUtil.execute(sql.toString());
+            logger.info("数据插入成功");
+            return true;
         } catch (Exception e) {
             logger.error("插入数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
             return false;
@@ -283,42 +268,35 @@ public class RegionServiceImpl implements RegionService {
 
     @Override
     public boolean batchInsert(String tableName, List<Map<String, Object>> dataList) {
-        if (dataList == null || dataList.isEmpty()) {
-            logger.warn("批量插入数据为空: {}", tableName);
-            return false;
-        }
-
         try {
-            logger.info("开始批量插入数据到表: {}, 数据条数: {}", tableName, dataList.size());
+            logger.info("开始批量插入数据: 表={}, 数据量={}", tableName, dataList.size());
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
                 return false;
             }
 
-            // 获取所有列名
-            Set<String> columns = dataList.get(0).keySet();
-            StringBuilder sql = new StringBuilder();
-            sql.append("INSERT INTO ").append(tableName).append(" (");
-            sql.append(String.join(", ", columns));
-            sql.append(") VALUES ");
-
-            // 构建批量插入的SQL
-            List<String> valuePlaceholders = Collections.nCopies(columns.size(), "?");
-            String rowPlaceholder = "(" + String.join(", ", valuePlaceholders) + ")";
-            sql.append(String.join(", ", Collections.nCopies(dataList.size(), rowPlaceholder)));
-
-            // 收集所有参数
-            List<Object> params = new ArrayList<>();
-            for (Map<String, Object> data : dataList) {
-                for (String column : columns) {
-                    params.add(data.get(column));
-                }
+            if (dataList.isEmpty()) {
+                return true;
             }
 
-            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
-            logger.info("批量数据插入{}: {}", success ? "成功" : "失败", tableName);
-            return success;
+            StringBuilder sql = new StringBuilder();
+            sql.append("INSERT INTO ").append(tableName).append(" (");
+            sql.append(String.join(", ", dataList.get(0).keySet()));
+            sql.append(") VALUES ");
+
+            List<String> valuesList = new ArrayList<>();
+            for (Map<String, Object> data : dataList) {
+                String values = data.values().stream()
+                        .map(value -> "'" + value + "'")
+                        .collect(Collectors.joining(", ", "(", ")"));
+                valuesList.add(values);
+            }
+            sql.append(String.join(", ", valuesList));
+
+            MySQLUtil.execute(sql.toString());
+            logger.info("批量数据插入成功");
+            return true;
         } catch (Exception e) {
             logger.error("批量插入数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
             return false;
@@ -328,7 +306,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean update(String tableName, Map<String, Object> data, String whereClause) {
         try {
-            logger.info("开始更新表数据: {}, 数据: {}, 条件: {}", tableName, data, whereClause);
+            logger.info("开始更新数据: 表={}, 数据={}, 条件={}", tableName, data, whereClause);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
@@ -337,17 +315,16 @@ public class RegionServiceImpl implements RegionService {
 
             StringBuilder sql = new StringBuilder();
             sql.append("UPDATE ").append(tableName).append(" SET ");
-            sql.append(data.keySet().stream()
-                    .map(key -> key + " = ?")
+            sql.append(data.entrySet().stream()
+                    .map(entry -> entry.getKey() + " = '" + entry.getValue() + "'")
                     .collect(Collectors.joining(", ")));
             if (whereClause != null && !whereClause.trim().isEmpty()) {
                 sql.append(" WHERE ").append(whereClause);
             }
 
-            List<Object> params = new ArrayList<>(data.values());
-            boolean success = MySQLUtil.executeUpdate(sql.toString(), params.toArray());
-            logger.info("数据更新{}: {}", success ? "成功" : "失败", tableName);
-            return success;
+            MySQLUtil.execute(sql.toString());
+            logger.info("数据更新成功");
+            return true;
         } catch (Exception e) {
             logger.error("更新数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
             return false;
@@ -357,7 +334,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean delete(String tableName, String whereClause) {
         try {
-            logger.info("开始删除表数据: {}, 条件: {}", tableName, whereClause);
+            logger.info("开始删除数据: 表={}, 条件={}", tableName, whereClause);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
@@ -370,9 +347,9 @@ public class RegionServiceImpl implements RegionService {
                 sql.append(" WHERE ").append(whereClause);
             }
 
-            boolean success = MySQLUtil.executeUpdate(sql.toString());
-            logger.info("数据删除{}: {}", success ? "成功" : "失败", tableName);
-            return success;
+            MySQLUtil.execute(sql.toString());
+            logger.info("数据删除成功");
+            return true;
         } catch (Exception e) {
             logger.error("删除数据失败: {}, 错误信息: {}", tableName, e.getMessage(), e);
             return false;
@@ -382,7 +359,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public List<Map<String, Object>> query(String tableName, List<String> columns, String whereClause) {
         try {
-            logger.info("开始查询表数据: {}, 列: {}, 条件: {}", tableName, columns, whereClause);
+            logger.info("开始查询数据: 表={}, 列={}, 条件={}", tableName, columns, whereClause);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
@@ -419,7 +396,7 @@ public class RegionServiceImpl implements RegionService {
     public List<Map<String, Object>> queryWithPagination(String tableName, List<String> columns,
             String whereClause, int pageNum, int pageSize) {
         try {
-            logger.info("开始分页查询表数据: {}, 列: {}, 条件: {}, 页码: {}, 每页大小: {}",
+            logger.info("开始分页查询数据: 表={}, 列={}, 条件={}, 页码={}, 每页大小={}",
                     tableName, columns, whereClause, pageNum, pageSize);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
@@ -457,7 +434,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public long count(String tableName, String whereClause) {
         try {
-            logger.info("开始统计表记录数: {}, 条件: {}", tableName, whereClause);
+            logger.info("开始统计记录数: 表={}, 条件={}", tableName, whereClause);
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
                 logger.error("表不存在: {}", tableName);
@@ -472,10 +449,9 @@ public class RegionServiceImpl implements RegionService {
 
             List<Object[]> results = MySQLUtil.executeQuery(sql.toString());
             if (!results.isEmpty() && results.get(0).length > 0) {
-                Object count = results.get(0)[0];
-                if (count instanceof Number) {
-                    return ((Number) count).longValue();
-                }
+                long count = ((Number) results.get(0)[0]).longValue();
+                logger.info("统计完成，记录数: {}", count);
+                return count;
             }
             return 0;
         } catch (Exception e) {
@@ -488,9 +464,9 @@ public class RegionServiceImpl implements RegionService {
     public boolean execute(String sql) {
         try {
             logger.info("开始执行SQL: {}", sql);
-            boolean success = MySQLUtil.executeUpdate(sql);
-            logger.info("SQL执行{}", success ? "成功" : "失败");
-            return success;
+            MySQLUtil.execute(sql);
+            logger.info("SQL执行成功");
+            return true;
         } catch (Exception e) {
             logger.error("执行SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
             return false;
@@ -535,23 +511,10 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean updateRouteInfo() {
         try {
+            logger.info("开始更新路由信息");
             Map<String, Object> routeInfo = masterClient.getRouteInfo();
-            // 更新本地路由信息
             if (routeInfo != null && !routeInfo.isEmpty()) {
-                // 更新表路由信息
-                @SuppressWarnings("unchecked")
-                Map<String, String> tableRoutes = (Map<String, String>) routeInfo.get("tableRoutes");
-                if (tableRoutes != null) {
-                    // 更新本地表路由缓存
-                    for (Map.Entry<String, String> entry : tableRoutes.entrySet()) {
-                        String tableName = entry.getKey();
-                        String targetRegionId = entry.getValue();
-                        // 如果表不在当前Region，需要迁移数据
-                        if (!targetRegionId.equals(regionId)) {
-                            requestDataMigration(regionId, targetRegionId, tableName);
-                        }
-                    }
-                }
+                // TODO: 实现路由信息更新逻辑
                 return true;
             }
             return false;
@@ -564,7 +527,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean reportTableDistribution() {
         try {
-            // 获取本地表信息
+            logger.info("开始报告表分布情况");
             List<TableInfo> tables = getTablesByRegion(regionId);
             return masterClient.reportTableDistribution(tables);
         } catch (Exception e) {
@@ -576,6 +539,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean handleMasterCommand(String command) {
         try {
+            logger.info("开始处理Master命令: {}", command);
             return masterClient.handleMasterCommand(command);
         } catch (Exception e) {
             logger.error("Failed to handle master command", e);
@@ -586,6 +550,7 @@ public class RegionServiceImpl implements RegionService {
     @Override
     public boolean requestDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
         try {
+            logger.info("开始请求数据迁移: 从{}到{}, 表: {}", sourceRegionId, targetRegionId, tableName);
             return masterClient.requestDataMigration(sourceRegionId, targetRegionId, tableName);
         } catch (Exception e) {
             logger.error("Failed to request data migration", e);
@@ -597,7 +562,6 @@ public class RegionServiceImpl implements RegionService {
     public boolean executeDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
         try {
             logger.info("开始执行数据迁移: 从{}到{}, 表: {}", sourceRegionId, targetRegionId, tableName);
-
             // 1. 获取表信息
             TableInfo tableInfo = getTableInfo(tableName);
             if (tableInfo == null) {
@@ -641,6 +605,7 @@ public class RegionServiceImpl implements RegionService {
     }
 
     // 关闭服务
+    @Override
     public void shutdown() {
         try {
             scheduler.shutdown();

@@ -20,8 +20,8 @@ public class ZookeeperUtil {
         connect();
     }
 
-    private void connect() throws IOException, InterruptedException {
-        zk = new ZooKeeper(SystemConfig.ZK_CONNECT_STRING, SystemConfig.ZK_SESSION_TIMEOUT, new Watcher() {
+    public void connect(String connectString, int timeout) throws IOException, InterruptedException {
+        zk = new ZooKeeper(connectString, timeout, new Watcher() {
             @Override
             public void process(WatchedEvent event) {
                 if (event.getState() == Event.KeeperState.SyncConnected) {
@@ -31,6 +31,10 @@ public class ZookeeperUtil {
         });
         connectedLatch.await();
         initRootPath();
+    }
+
+    private void connect() throws IOException, InterruptedException {
+        connect(SystemConfig.ZK_CONNECT_STRING, SystemConfig.ZK_SESSION_TIMEOUT);
     }
 
     private void initRootPath() {
@@ -91,5 +95,9 @@ public class ZookeeperUtil {
         if (zk != null) {
             zk.close();
         }
+    }
+
+    public boolean isConnected() {
+        return zk != null && zk.getState() == ZooKeeper.States.CONNECTED;
     }
 } 
