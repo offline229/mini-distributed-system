@@ -2,7 +2,6 @@ package com.mds.common.util;
 
 import com.mds.common.config.SystemConfig;
 import org.apache.zookeeper.*;
-import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,4 +99,4 @@ public class ZookeeperUtil {
     public boolean isConnected() {
         return zk != null && zk.getState() == ZooKeeper.States.CONNECTED;
     }
-} 
+}

@@ -13,9 +13,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// 负责注册Region到ZooKeeper，并处理来自客户端的请求
 public class RegionServer {
     private static final Logger logger = LoggerFactory.getLogger(RegionServer.class);
-    
+
     private final String regionId;
     private final String host;
     private final int port;
@@ -38,12 +39,12 @@ public class RegionServer {
         if (isRunning.compareAndSet(false, true)) {
             // 注册到ZooKeeper
             registerToZooKeeper();
-            
+
             // 启动服务器
             serverSocket = new ServerSocket(port);
             serverThread = new Thread(this::acceptConnections);
             serverThread.start();
-            
+
             logger.info("Region server started on {}:{}", host, port);
         }
     }
@@ -57,11 +58,11 @@ public class RegionServer {
             regionInfo.setPort(port);
             regionInfo.setStatus("ACTIVE");
             regionInfo.setCreateTime(System.currentTimeMillis());
-            
+
             // 创建临时节点，当Region断开连接时自动删除
             zkUtil.createPath(regionPath, org.apache.zookeeper.CreateMode.EPHEMERAL);
             zkUtil.setData(regionPath, regionInfo.toString().getBytes());
-            
+
             logger.info("Region registered to ZooKeeper: {}", regionPath);
         } catch (Exception e) {
             logger.error("Failed to register region to ZooKeeper", e);
@@ -103,7 +104,7 @@ public class RegionServer {
             if (serverThread != null) {
                 serverThread.interrupt();
             }
-            
+
             // 关闭服务器Socket
             if (serverSocket != null) {
                 try {
@@ -112,10 +113,10 @@ public class RegionServer {
                     logger.error("Error closing server socket", e);
                 }
             }
-            
+
             // 关闭线程池
             threadPool.shutdown();
-            
+
             // 从ZooKeeper注销
             try {
                 String regionPath = SystemConfig.ZK_REGION_PATH + "/" + regionId;
@@ -124,7 +125,7 @@ public class RegionServer {
             } catch (Exception e) {
                 logger.error("Error unregistering region from ZooKeeper", e);
             }
-            
+
             logger.info("Region server stopped");
         }
     }
@@ -132,4 +133,4 @@ public class RegionServer {
     public boolean isRunning() {
         return isRunning.get();
     }
-} 
+}

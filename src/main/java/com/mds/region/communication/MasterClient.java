@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+// region模块中，负责与master通信的客户端类
 public class MasterClient {
     private static final Logger logger = LoggerFactory.getLogger(MasterClient.class);
     private final String masterHost;
@@ -115,8 +116,8 @@ public class MasterClient {
     public boolean requestDataMigration(String sourceRegionId, String targetRegionId, String tableName) {
         try {
             // TODO: 实现迁移请求
-            logger.info("Requesting data migration from {} to {} for table {}", 
-                sourceRegionId, targetRegionId, tableName);
+            logger.info("Requesting data migration from {} to {} for table {}",
+                    sourceRegionId, targetRegionId, tableName);
             return true;
         } catch (Exception e) {
             logger.error("Failed to request data migration", e);
@@ -137,4 +138,4 @@ public class MasterClient {
             return false;
         }
     }
-} 
+}
