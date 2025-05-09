@@ -1,111 +1,78 @@
 package com.mds.region;
 
-import com.mds.common.model.RegionInfo;
-import com.mds.common.util.ZookeeperUtil;
-import com.mds.common.config.SystemConfig;
-import com.mds.region.service.RegionService;
-import com.mds.region.service.impl.RegionServiceImpl;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.mds.region.handler.ClientHandler;
+import com.mds.region.handler.MasterHandler;
+import com.mds.region.handler.DBHandler;
+import com.mds.region.handler.ZookeeperHandler;
 
 public class Region {
-    private static final Logger logger = LoggerFactory.getLogger(Region.class);
-    private final String regionId;
-    private final String host;
-    private final int port;
-    private final String zkConnectString;
-    private ZookeeperUtil zkUtil;
-    private RegionService regionService;
-    private boolean isRunning;
+    private MasterHandler masterHandler;
+    private ClientHandler clientHandler;
+    private DBHandler dbHandler;
+    private ZookeeperHandler zkHandler;
 
-    public Region(String regionId, String host, int port, String zkConnectString) {
+    private String regionId; // Region 的唯一标识
+    private String regionData; // Region 的元数据信息
+
+    public Region(String regionId, String regionData) {
         this.regionId = regionId;
-        this.host = host;
-        this.port = port;
-        this.zkConnectString = zkConnectString;
-        this.isRunning = false;
+        this.regionData = regionData;
     }
 
     public void start() {
         try {
-            logger.info("开始启动Region: {}", regionId);
-            
-            // 初始化ZooKeeper连接
-            zkUtil = new ZookeeperUtil();
-            zkUtil.connect(zkConnectString, 5000);
-            
-            // 初始化Region服务
-            regionService = new RegionServiceImpl(regionId);
-            
-            // 注册Region信息
-            RegionInfo regionInfo = new RegionInfo();
-            regionInfo.setRegionId(regionId);
-            regionInfo.setHost(host);
-            regionInfo.setPort(port);
-            regionInfo.setStatus("ACTIVE");
-            regionInfo.setLastHeartbeat(System.currentTimeMillis());
-            
-            if (!regionService.register(regionInfo)) {
-                throw new RuntimeException("Region注册失败");
-            }
-            
-            isRunning = true;
-            logger.info("Region启动成功: {}", regionId);
+            // 初始化 ZooKeeper 处理器并注册 Region 节点
+            zkHandler = new ZookeeperHandler();
+            zkHandler.init();
+            zkHandler.registerRegion(regionId, regionData);
+
+            // 初始化数据库处理器（仅验证连接）
+            dbHandler = new DBHandler();
+            dbHandler.init();
+
+            // 启动 Master 和 Client 的处理器
+            masterHandler = new MasterHandler();
+            masterHandler.start();
+
+            clientHandler = new ClientHandler(dbHandler);
+            clientHandler.start();
+
+            System.out.println("Region 启动成功！");
         } catch (Exception e) {
-            logger.error("Region启动失败: {}", e.getMessage(), e);
-            throw new RuntimeException("Region启动失败", e);
+            System.err.println("Region 启动失败：" + e.getMessage());
+            stop();
         }
     }
 
     public void stop() {
         try {
-            logger.info("开始停止Region: {}", regionId);
-            if (regionService != null) {
-                regionService.shutdown();
-            }
-            if (zkUtil != null) {
-                zkUtil.close();
-            }
-            isRunning = false;
-            logger.info("Region停止成功: {}", regionId);
+            System.out.println("开始停止 Region: " + regionId);
+
+            // 停止 Client 和 Master 的处理器
+            if (clientHandler != null) clientHandler.stop();
+            if (masterHandler != null) masterHandler.stop();
+
+            // 关闭数据库处理器
+            if (dbHandler != null) dbHandler.close();
+
+            // 注销 ZooKeeper 中的 Region 节点
+            if (zkHandler != null) zkHandler.unregisterRegion(regionId);
+
+            System.out.println("Region 停止成功！");
         } catch (Exception e) {
-            logger.error("Region停止失败: {}", e.getMessage(), e);
-            throw new RuntimeException("Region停止失败", e);
+            System.err.println("Region 停止失败：" + e.getMessage());
         }
-    }
-
-    public boolean isRunning() {
-        return isRunning;
-    }
-
-    public RegionService getRegionService() {
-        return regionService;
     }
 
     public static void main(String[] args) {
-        if (args.length < 4) {
-            System.err.println("Usage: Region <regionId> <host> <port> <zkConnectString>");
-            System.exit(1);
-        }
+        // 示例：创建一个 Region 节点
+        String regionId = "region-1";
+        String regionData = "host=127.0.0.1,port=8000";
 
-        String regionId = args[0];
-        String host = args[1];
-        int port = Integer.parseInt(args[2]);
-        String zkConnectString = args[3];
+        Region region = new Region(regionId, regionData);
+        region.start();
 
-        Region region = new Region(regionId, host, port, zkConnectString);
-        
-        try {
-            region.start();
-            
-            // 添加关闭钩子
-            Runtime.getRuntime().addShutdownHook(new Thread(region::stop));
-            
-            // 保持主线程运行
-            Thread.currentThread().join();
-        } catch (Exception e) {
-            logger.error("Error running Region", e);
-            System.exit(1);
-        }
+        // 添加钩子以便优雅关闭
+        Runtime.getRuntime().addShutdownHook(new Thread(region::stop));
     }
-} 
+}
