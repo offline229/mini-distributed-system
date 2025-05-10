@@ -1,7 +1,6 @@
 package com.mds.client.handler;
 
 import org.apache.zookeeper.*;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.concurrent.CountDownLatch;

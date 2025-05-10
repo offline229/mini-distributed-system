@@ -85,6 +85,14 @@ public class Client {
 
     private String getSqlOperation(String sql) {
         sql = sql.trim().toUpperCase();
+        // DDL操作
+        if (sql.startsWith("CREATE") ||
+                sql.startsWith("DROP") ||
+                sql.startsWith("ALTER") ||
+                sql.startsWith("TRUNCATE")) {
+            return "DDL";
+        }
+        // DML和DQL操作
         if (sql.startsWith("SELECT"))
             return "QUERY";
         if (sql.startsWith("INSERT"))
@@ -93,7 +101,8 @@ public class Client {
             return "UPDATE";
         if (sql.startsWith("DELETE"))
             return "DELETE";
-        throw new IllegalArgumentException("不支持的SQL操作");
+
+        throw new IllegalArgumentException("不支持的SQL操作: " + sql);
     }
 
     public void stop() {

@@ -28,8 +28,7 @@ public class MySQLUtil {
             Connection conn = DriverManager.getConnection(
                     SystemConfig.MYSQL_URL,
                     SystemConfig.MYSQL_USER,
-                    SystemConfig.MYSQL_PASSWORD
-            );
+                    SystemConfig.MYSQL_PASSWORD);
             logger.debug("MySQL数据库连接成功");
             return conn;
         } catch (SQLException e) {
@@ -75,36 +74,35 @@ public class MySQLUtil {
         Connection conn = null;
         PreparedStatement pstmt = null;
         try {
-            logger.debug("执行更新SQL: {}, 参数: {}", sql, params);
             conn = getConnection();
+
+            // 对于CREATE TABLE语句，直接使用Statement执行
+            if (sql.trim().toUpperCase().startsWith("CREATE TABLE")) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute(sql);
+                    return true;
+                }
+            }
+
+            // 其他DML语句使用PreparedStatement
             pstmt = conn.prepareStatement(sql);
-            for (int i = 0; i < params.length; i++) {
-                pstmt.setObject(i + 1, params[i]);
+            if (params != null) {
+                for (int i = 0; i < params.length; i++) {
+                    pstmt.setObject(i + 1, params[i]);
+                }
             }
             int result = pstmt.executeUpdate();
-            logger.debug("SQL执行结果: {}", result);
-    
-            // 对于CREATE TABLE和DROP TABLE操作进行进一步检查
-            if (sql.trim().toUpperCase().startsWith("CREATE TABLE")) {
-                // 进一步检查表是否已创建
-                return checkIfTableExists(conn, "test_table");
-            }
-    
-            if (sql.trim().toUpperCase().startsWith("DROP TABLE")) {
-                // 进一步检查表是否已删除
-                return !checkIfTableExists(conn, "test_table");
-            }
-    
-            return result > 0;
+            return result >= 0;
+
         } catch (SQLException e) {
-            logger.error("执行更新操作失败: {}, 错误信息: {}", sql, e.getMessage(), e);
+            logger.error("执行更新操作失败: {}, 错误信息: {}", sql, e.getMessage());
             return false;
         } finally {
             closeStatement(pstmt);
             closeConnection(conn);
         }
     }
-    
+
     // 检查表是否存在
     private static boolean checkIfTableExists(Connection conn, String tableName) {
         try (Statement stmt = conn.createStatement()) {
@@ -115,7 +113,7 @@ public class MySQLUtil {
             return false;
         }
     }
-    
+
     public static List<Object[]> executeQuery(String sql, Object... params) {
         Connection conn = null;
         PreparedStatement pstmt = null;
@@ -152,7 +150,7 @@ public class MySQLUtil {
 
     public static void execute(String sql) throws SQLException {
         try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
+                Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         } catch (SQLException e) {
             logger.error("执行SQL失败: {}, 错误信息: {}", sql, e.getMessage(), e);
@@ -163,12 +161,12 @@ public class MySQLUtil {
     public static List<Object[]> executeQuery(String sql) throws SQLException {
         List<Object[]> results = new ArrayList<>();
         try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
+
             ResultSetMetaData metaData = rs.getMetaData();
             int columnCount = metaData.getColumnCount();
-            
+
             while (rs.next()) {
                 Object[] row = new Object[columnCount];
                 for (int i = 0; i < columnCount; i++) {
@@ -182,4 +180,4 @@ public class MySQLUtil {
         }
         return results;
     }
-} 
+}

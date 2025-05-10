@@ -14,7 +14,11 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 import com.mds.region.constant.JsonFormat;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class ClientHandler {
+    private static final Logger logger = LoggerFactory.getLogger(ClientHandler.class);
     private static final int CLIENT_PORT = 8000;
     private ServerSocket serverSocket;
     private ExecutorService threadPool;
@@ -43,46 +47,47 @@ public class ClientHandler {
     }
 
     private void handleClientRequest(Socket socket) {
-        try (socket;
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
+        PrintWriter writer = null;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            writer = new PrintWriter(socket.getOutputStream(), true);
 
-            // 1. 读取客户端请求
-            String request = reader.readLine();
-            System.out.println("收到客户端请求: " + request);
-
-            // 2. 解析请求
-            JSONObject requestJson = new JSONObject(request);
-            String operation = requestJson.getString(JsonFormat.FIELD_OPERATION);
-            String sql = requestJson.getString(JsonFormat.FIELD_SQL);
-            Object[] params = null;
-            if (requestJson.has(JsonFormat.FIELD_PARAMS)) {
-                params = requestJson.getJSONArray(JsonFormat.FIELD_PARAMS).toList().toArray();
+            // 读取请求
+            String requestStr = reader.readLine();
+            if (requestStr == null || requestStr.isEmpty()) {
+                throw new IOException("无效的请求");
             }
 
-            // 3. 执行数据库操作
-            Object result = null;
-            try {
-                result = dbHandler.execute(sql, params);
+            logger.info("收到客户端请求: {}", requestStr);
+            JSONObject request = new JSONObject(requestStr);
 
-                // 4. 返回成功结果
-                JSONObject response = new JSONObject();
-                response.put(JsonFormat.FIELD_STATUS, JsonFormat.STATUS_SUCCESS);
-                response.put(JsonFormat.FIELD_DATA, result);
-                response.put(JsonFormat.FIELD_MESSAGE, "");
-                writer.println(response.toString());
+            // 执行SQL
+            String sql = request.getString("sql");
+            Object[] params = request.has("params") ? request.getJSONArray("params").toList().toArray() : null;
 
-            } catch (Exception e) {
-                // 5. 返回错误结果
-                JSONObject errorResponse = new JSONObject();
-                errorResponse.put(JsonFormat.FIELD_STATUS, JsonFormat.STATUS_ERROR);
-                errorResponse.put(JsonFormat.FIELD_DATA, JSONObject.NULL);
-                errorResponse.put(JsonFormat.FIELD_MESSAGE, e.getMessage());
-                writer.println(errorResponse.toString());
-            }
+            // 执行操作并返回结果
+            Object result = dbHandler.execute(sql, params);
+
+            // 构建响应
+            JSONObject response = new JSONObject();
+            response.put("status", "success");
+            response.put("data", result != null ? result : JSONObject.NULL);
+            response.put("message", "");
+
+            writer.println(response.toString());
 
         } catch (Exception e) {
-            System.err.println("处理客户端请求失败: " + e.getMessage());
+            logger.error("处理客户端请求失败: {}", e.getMessage());
+            try {
+                if (writer != null) {
+                    JSONObject errorResponse = new JSONObject()
+                            .put("status", "error")
+                            .put("message", e.getMessage())
+                            .put("data", JSONObject.NULL);
+                    writer.println(errorResponse.toString());
+                }
+            } catch (Exception ex) {
+                logger.error("发送错误响应失败: {}", ex.getMessage());
+            }
         }
     }
 
