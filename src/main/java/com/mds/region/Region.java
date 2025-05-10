@@ -23,29 +23,23 @@ public class Region {
 
     public void start() {
         try {
-            // 1. 首先启动Master通信处理器
-            masterHandler = new MasterHandler();
-            masterHandler.start();
-
-            // 2. 向Master注册并获取regionId
-            this.regionId = masterHandler.registerWithMaster(host, port);
-            if (regionId == null) {
-                throw new RuntimeException("从Master获取Region ID失败");
-            }
-
-            // 3. 准备Region的元数据
-            String regionData = String.format("host=%s,port=%d", host, port);
-
-            // 4. 初始化并注册到ZooKeeper
+            // 1. 首先初始化ZK处理器
             zkHandler = new ZookeeperHandler();
             zkHandler.init();
-            zkHandler.registerRegion(regionId, regionData);
 
-            // 5. 初始化数据库处理器
+            // 2. 初始化并启动Master处理器
+            masterHandler = new MasterHandler();
+            masterHandler.init();
+            masterHandler.start();
+
+            // 3. 向Master注册
+            this.regionId = masterHandler.registerWithMaster(host, port);
+
+            // 4. 初始化数据库处理器
             dbHandler = new DBHandler();
             dbHandler.init();
 
-            // 6. 启动客户端请求处理器
+            // 5. 启动客户端请求处理器
             clientHandler = new ClientHandler(dbHandler);
             clientHandler.start();
 

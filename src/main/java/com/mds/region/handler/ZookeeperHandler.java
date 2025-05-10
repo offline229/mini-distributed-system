@@ -27,16 +27,6 @@ public class ZookeeperHandler {
         System.out.println("ZooKeeper连接成功！");
     }
 
-    // 注册Region节点
-    public void registerRegion(String regionId, String regionData) throws KeeperException, InterruptedException {
-        String path = REGION_PATH + "/" + regionId;
-        if (zk.exists(REGION_PATH, false) == null) {
-            zk.create(REGION_PATH, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT); // 修复权限设置
-        }
-        zk.create(path, regionData.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL); // 修复权限设置
-        System.out.println("Region节点注册成功：" + path);
-    }
-
     // 注销Region节点
     public void unregisterRegion(String regionId) throws KeeperException, InterruptedException {
         String path = REGION_PATH + "/" + regionId;
