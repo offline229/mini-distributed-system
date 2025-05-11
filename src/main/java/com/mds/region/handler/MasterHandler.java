@@ -86,7 +86,7 @@ public class MasterHandler {
         sendRequest(heartbeat);
     }
 
-    public String registerRegionServer(String host, int port) throws IOException {
+    public String registerRegionServer(String host, int port, String replicaKey) throws IOException {
         if (zooKeeper == null) {
             throw new IllegalStateException("请先调用 init() 方法初始化 ZooKeeper 客户端");
         }
@@ -119,6 +119,7 @@ public class MasterHandler {
             registerRequest.put("type", "REGISTER");
             registerRequest.put("host", host);
             registerRequest.put("port", port);
+            registerRequest.put("replicaKey", replicaKey); // 添加副本标识key
 
             // 4. 发送请求并等待响应
             sendRequest(registerRequest);

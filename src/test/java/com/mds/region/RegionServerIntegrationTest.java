@@ -10,14 +10,14 @@ import static org.junit.Assert.*;
 public class RegionServerIntegrationTest {
     private static final String HOST = "localhost";
     private static final int PORT = 8000;
-    
+    private static final String ReplicaKey = "1";
     private RegionServer regionServer;
     private Client client;
     
     @Before
     public void setUp() {
         // 启动 RegionServer
-        regionServer = new RegionServer(HOST, PORT);
+        regionServer = new RegionServer(HOST, PORT, ReplicaKey);
         regionServer.start();
         
         // 初始化 Client

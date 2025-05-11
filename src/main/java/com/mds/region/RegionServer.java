@@ -29,6 +29,7 @@ public class RegionServer {
     private final String host;
     private final int port;
     private String serverId;
+    private final String replicaKey; // 添加副本标识key
 
     private final ZookeeperHandler zkHandler;
     private final ClientHandler clientHandler;
@@ -37,11 +38,18 @@ public class RegionServer {
     private final Map<String, Region> regions; // regionId -> Region
     private final Map<String, Map<String, String>> tableShards; // tableName -> (shardRange -> regionId)
 
-    public RegionServer(String host, int port) {
+    // 添加副本相关字段
+    private final Map<String, RegionServer> replicas; // replicaKey -> RegionServer
+    private int currentConnections; // 当前连接数
+
+    public RegionServer(String host, int port, String replicaKey) {
         this.host = host;
         this.port = port;
+        this.replicaKey = replicaKey;
         this.regions = new ConcurrentHashMap<>();
         this.tableShards = new ConcurrentHashMap<>();
+        this.replicas = new ConcurrentHashMap<>();
+        this.currentConnections = 0;
         this.zkHandler = new ZookeeperHandler();
         this.clientHandler = new ClientHandler(this);
         this.masterHandler = new MasterHandler();
@@ -55,7 +63,7 @@ public class RegionServer {
 
             // 2. 从Master获取serverId
             masterHandler.init();
-            this.serverId = masterHandler.registerRegionServer(host, port);
+            this.serverId = masterHandler.registerRegionServer(host, port, replicaKey);
             logger.info("从Master获取到serverId: {}", serverId);
 
             // 3. 获取表信息
@@ -78,6 +86,76 @@ public class RegionServer {
             logger.error("RegionServer启动失败", e);
             throw new RuntimeException(e);
         }
+    }
+
+    // 添加获取最少连接的RegionServer方法
+    public RegionServer getLeastLoadedReplica() {
+        RegionServer leastLoaded = this;
+        int minConnections = this.currentConnections;
+
+        for (RegionServer replica : replicas.values()) {
+            if (replica.currentConnections < minConnections) {
+                minConnections = replica.currentConnections;
+                leastLoaded = replica;
+            }
+        }
+
+        return leastLoaded;
+    }
+    public String getServerId() {
+        return serverId;
+    }
+    public void stop() {
+        try {
+            // 1. 停止客户端处理器
+            if (clientHandler != null) {
+                clientHandler.stop(); // 假设 ClientHandler 有一个 stop() 方法来停止处理器
+                logger.info("客户端处理器停止");
+            }
+    
+            // 2. 清理与 ZooKeeper 的连接
+            if (zkHandler != null) {
+                zkHandler.close(); // 假设 ZookeeperHandler 有一个 close() 方法来关闭连接
+                logger.info("ZooKeeper 连接关闭");
+            }
+    
+            // 3. 清理与 Master 的连接
+            if (masterHandler != null) {
+                masterHandler.stop(); // 假设 MasterHandler 有一个 unregisterRegionServer 方法来注销 RegionServer
+                logger.info("RegionServer 从 Master 注销");
+            }
+    
+            // 4. 停止所有分片
+            for (Region region : regions.values()) {
+                region.stop(); // 假设 Region 有一个 stop() 方法来停止其操作
+                logger.info("Region {} 停止", region.getRegionId());
+            }
+
+    
+            logger.info("RegionServer {} 已停止", serverId);
+    
+        } catch (Exception e) {
+            logger.error("停止 RegionServer 失败", e);
+        }
+    }
+    
+    // 添加连接数管理方法
+    public void incrementConnections() {
+        currentConnections++;
+        logger.info("当前连接数: {}", currentConnections);
+    }
+
+    public void decrementConnections() {
+        currentConnections--;
+        logger.info("当前连接数: {}", currentConnections);
+    }
+
+    // 添加数据同步方法
+    public void syncData(String tableName, String operation, String data) {
+        logger.info("同步数据到副本: table={}, operation={}, data={}", tableName, operation, data);
+        // 在实际应用中，这里应该实现真正的数据同步
+        // 这里简单打印一下
+        System.out.println("同步数据到副本: " + tableName + ", " + operation + ", " + data);
     }
 
     private Map<String, Long> getTableRows() throws SQLException {
@@ -304,7 +382,7 @@ public class RegionServer {
 
     // 测试用主方法
     public static void main(String[] args) {
-        RegionServer server = new RegionServer("localhost", 8000);
+        RegionServer server = new RegionServer("localhost", 8000, "1");
         server.start();
 
         // 打印分片信息
@@ -379,7 +457,7 @@ public class RegionServer {
 
             // 2. 更新ZK节点信息
             updateZkInfo();
-            
+
             logger.info("数据变更处理完成: 表={}", tableName);
         } catch (Exception e) {
             logger.error("处理数据变更失败", e);
@@ -408,8 +486,8 @@ public class RegionServer {
                 Region emptyRegion = findEmptyRegion();
                 String shardRange = "0-0"; // 初始分片范围
                 tableShardInfo.put(shardRange, emptyRegion.getRegionId());
-                logger.info("表 {} 初始分片范围: {} -> Region: {}", 
-                    tableName, shardRange, emptyRegion.getRegionId());
+                logger.info("表 {} 初始分片范围: {} -> Region: {}",
+                        tableName, shardRange, emptyRegion.getRegionId());
                 break;
 
             case "INSERT":
