@@ -86,7 +86,10 @@ public class MasterHandler {
         sendRequest(heartbeat);
     }
 
-    public String registerWithMaster(String host, int port) throws IOException {
+    public String registerRegionServer(String host, int port) throws IOException {
+        if (zooKeeper == null) {
+            throw new IllegalStateException("请先调用 init() 方法初始化 ZooKeeper 客户端");
+        }
         try {
             // 1. 从ZK获取当前active master信息
             byte[] masterData = zooKeeper.getData("/mds/master/active", false, null);
@@ -99,7 +102,7 @@ public class MasterHandler {
             } else {
                 System.out.println("ZK中未找到active master，使用默认测试配置");
                 setTestMode(true); // 设置测试模式
-                return "regiontest-1";
+                return "RegionServerTest-1";
             }
 
             // 2. 尝试连接Master
@@ -109,7 +112,7 @@ public class MasterHandler {
             } catch (IOException e) {
                 System.out.println("连接Master失败，进入测试模式");
                 setTestMode(true); // 设置测试模式
-                return "regiontest-1";
+                return "RegionServerTest-1";
             }
             // 3. 发送注册请求
             Map<String, Object> registerRequest = new HashMap<>();
@@ -121,16 +124,16 @@ public class MasterHandler {
             sendRequest(registerRequest);
 
             // 5. 如果连接成功但未收到响应，仍使用测试ID
-            System.out.println("未收到Master响应，使用测试ID：regiontest-1");
-            return "regiontest-1";
+            System.out.println("未收到Master响应，使用测试ID：RegionServerTest-1");
+            return "RegionServerTest-1";
 
         } catch (KeeperException | InterruptedException e) {
             System.out.println("ZK操作失败，进入测试模式：" + e.getMessage());
             setTestMode(true); // 设置测试模式
-            return "regiontest-1";
+            return "RegionServerTest-1";
         } catch (IOException e) {
             System.out.println("连接Master失败，使用测试ID：" + e.getMessage());
-            return "regiontest-1";
+            return "RegionServerTest-1";
         }
     }
 

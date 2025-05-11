@@ -1,89 +1,177 @@
 package com.mds.region;
 
-import com.mds.region.handler.ClientHandler;
-import com.mds.region.handler.MasterHandler;
 import com.mds.region.handler.DBHandler;
-import com.mds.region.handler.ZookeeperHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.SQLException;
 
 public class Region {
-    private MasterHandler masterHandler;
-    private ClientHandler clientHandler;
-    private DBHandler dbHandler;
-    private ZookeeperHandler zkHandler;
+    private static final Logger logger = LoggerFactory.getLogger(Region.class);
 
-    private String regionId;
-    private String host;
-    private int port;
+    private final RegionServer regionServer;
+    private final String regionId;
+    private final DBHandler dbHandler;
     private volatile boolean isRunning;
 
-    public Region(String host, int port) {
-        this.host = host;
-        this.port = port;
+    // Region状态信息
+
+    private int currentConnections;
+    private long totalQueries;
+    private double load;
+
+    public Region(RegionServer regionServer, String regionId) {
+        this.regionServer = regionServer;
+        this.regionId = regionId;
+        this.dbHandler = new DBHandler(); // 在构造函数中初始化
+        this.currentConnections = 0;
+        this.totalQueries = 0;
+        this.load = 0.0;
     }
 
     public void start() {
         try {
-            // 1. 首先初始化ZK处理器
-            zkHandler = new ZookeeperHandler();
-            zkHandler.init();
-
-            // 2. 初始化并启动Master处理器
-            masterHandler = new MasterHandler();
-            masterHandler.init();
-            masterHandler.start();
-
-            // 3. 向Master注册
-            this.regionId = masterHandler.registerWithMaster(host, port);
-
-            // 4. 初始化数据库处理器
-            dbHandler = new DBHandler();
-            dbHandler.init();
-
-            // 5. 启动客户端请求处理器
-            clientHandler = new ClientHandler(dbHandler);
-            clientHandler.start();
-
+            dbHandler.init(); // 只需要初始化，不需要重新创建
             isRunning = true;
-            System.out.println("Region 启动成功！RegionId: " + regionId);
-        } catch (Exception e) {
-            System.err.println("Region 启动失败：" + e.getMessage());
-            stop();
+            logger.info("Region启动成功: {}", regionId);
+        } catch (SQLException e) {
+            logger.error("Region启动失败: {}", regionId, e);
+            throw new RuntimeException("Region启动失败", e);
         }
     }
 
     public void stop() {
+        if (!isRunning)
+            return;
+
         try {
-            System.out.println("开始停止 Region: " + regionId);
-
-            // 停止 Client 和 Master 的处理器
-            if (clientHandler != null)
-                clientHandler.stop();
-            if (masterHandler != null)
-                masterHandler.stop();
-
-            // 关闭数据库处理器
-            if (dbHandler != null)
-                dbHandler.close();
-
-            // 注销 ZooKeeper 中的 Region 节点
-            if (zkHandler != null)
-                zkHandler.unregisterRegion(regionId);
-
-            System.out.println("Region 停止成功！");
+            isRunning = false;
+            dbHandler.close();
+            logger.info("Region停止成功: {}", regionId);
         } catch (Exception e) {
-            System.err.println("Region 停止失败：" + e.getMessage());
+            logger.error("Region停止失败: {}", regionId, e);
         }
     }
 
-    public static void main(String[] args) {
-        // 示例：启动一个Region节点
-        String host = "localhost";
-        int port = 8000;
+    // 执行SQL操作
+    public Object execute(String sql, Object[] params) throws SQLException {
+        if (!isRunning) {
+            throw new IllegalStateException("Region未运行");
+        }
 
-        Region region = new Region(host, port);
-        region.start();
+        try {
+            currentConnections++;
+            totalQueries++;
+            updateLoad();
+            return dbHandler.execute(sql, params);
+        } finally {
+            currentConnections--;
+            updateLoad();
+        }
+    }
 
-        // 添加关闭钩子
-        Runtime.getRuntime().addShutdownHook(new Thread(region::stop));
+    // 获取Region状态
+    public RegionStatus getStatus() {
+        return RegionStatus.builder()
+                .regionId(regionId)
+                .connections(currentConnections)
+                .totalQueries(totalQueries)
+                .load(load)
+                .isRunning(isRunning)
+                .build();
+    }
+
+    private void updateLoad() {
+        // 简单的负载计算: 连接数/最大连接数
+        this.load = currentConnections / 100.0; // 假设最大连接数为100
+    }
+
+    // Getters
+    public String getRegionId() {
+        return regionId;
+    }
+
+    public boolean isRunning() {
+        return isRunning;
+    }
+}
+
+// Region状态类
+class RegionStatus {
+    private final String regionId;
+    private final int connections;
+    private final long totalQueries;
+    private final double load;
+    private final boolean running;
+
+    private RegionStatus(Builder builder) {
+        this.regionId = builder.regionId;
+        this.connections = builder.connections;
+        this.totalQueries = builder.totalQueries;
+        this.load = builder.load;
+        this.running = builder.running;
+    }
+
+    // Builder模式
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    static class Builder {
+        private String regionId;
+        private int connections;
+        private long totalQueries;
+        private double load;
+        private boolean running;
+
+        public Builder regionId(String regionId) {
+            this.regionId = regionId;
+            return this;
+        }
+
+        public Builder connections(int connections) {
+            this.connections = connections;
+            return this;
+        }
+
+        public Builder totalQueries(long totalQueries) {
+            this.totalQueries = totalQueries;
+            return this;
+        }
+
+        public Builder load(double load) {
+            this.load = load;
+            return this;
+        }
+
+        public Builder isRunning(boolean running) {
+            this.running = running;
+            return this;
+        }
+
+        public RegionStatus build() {
+            return new RegionStatus(this);
+        }
+    }
+
+    // Getters
+    public String getRegionId() {
+        return regionId;
+    }
+
+    public int getConnections() {
+        return connections;
+    }
+
+    public long getTotalQueries() {
+        return totalQueries;
+    }
+
+    public double getLoad() {
+        return load;
+    }
+
+    public boolean isRunning() {
+        return running;
     }
 }
