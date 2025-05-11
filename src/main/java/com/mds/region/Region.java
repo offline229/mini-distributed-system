@@ -15,7 +15,6 @@ public class Region {
     private volatile boolean isRunning;
 
     // Region状态信息
-
     private int currentConnections;
     private long totalQueries;
     private double load;
@@ -23,7 +22,7 @@ public class Region {
     public Region(RegionServer regionServer, String regionId) {
         this.regionServer = regionServer;
         this.regionId = regionId;
-        this.dbHandler = new DBHandler(); // 在构造函数中初始化
+        this.dbHandler = new DBHandler();
         this.currentConnections = 0;
         this.totalQueries = 0;
         this.load = 0.0;
@@ -31,7 +30,7 @@ public class Region {
 
     public void start() {
         try {
-            dbHandler.init(); // 只需要初始化，不需要重新创建
+            dbHandler.init();
             isRunning = true;
             logger.info("Region启动成功: {}", regionId);
         } catch (SQLException e) {
@@ -54,7 +53,7 @@ public class Region {
     }
 
     // 执行SQL操作
-    public Object execute(String sql, Object[] params) throws SQLException {
+    public Object execute(String sql, Object[] params) throws Exception {
         if (!isRunning) {
             throw new IllegalStateException("Region未运行");
         }
@@ -63,7 +62,18 @@ public class Region {
             currentConnections++;
             totalQueries++;
             updateLoad();
-            return dbHandler.execute(sql, params);
+
+            // 执行SQL并获取结果
+            DBHandler.ExecuteResult result = dbHandler.execute(sql, params);
+            logger.info("Region {} 执行SQL结果: {}", regionId, result);
+
+            // 如果数据发生变更，通知RegionServer
+            if (result.isDataChanged()) {
+                regionServer.onDataChanged(result.getOperation(), result.getTableName(), 
+                    result.getData(), result.getMessage());
+            }
+
+            return result.getData();
         } finally {
             currentConnections--;
             updateLoad();

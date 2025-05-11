@@ -368,4 +368,71 @@ public class RegionServer {
             });
         });
     }
+
+    // 处理数据变更
+    public void onDataChanged(String operation, String tableName, Object data, String message) {
+        try {
+            logger.info("收到数据变更通知: 操作={}, 表={}, 消息={}", operation, tableName, message);
+
+            // 1. 更新本地分片信息
+            updateLocalShardingInfo(operation, tableName, data);
+
+            // 2. 更新ZK节点信息
+            updateZkInfo();
+            
+            logger.info("数据变更处理完成: 表={}", tableName);
+        } catch (Exception e) {
+            logger.error("处理数据变更失败", e);
+            throw new RuntimeException("处理数据变更失败", e);
+        }
+    }
+
+    private void updateLocalShardingInfo(String operation, String tableName, Object data) {
+        Map<String, String> tableShardInfo = tableShards.get(tableName);
+        if (tableShardInfo == null) {
+            // 如果是新建表操作，创建新的分片信息
+            if ("CREATE".equals(operation)) {
+                tableShardInfo = new HashMap<>();
+                tableShards.put(tableName, tableShardInfo);
+                logger.info("为新表 {} 创建分片信息", tableName);
+            } else {
+                logger.warn("表 {} 不存在分片信息", tableName);
+                return;
+            }
+        }
+
+        // 根据操作类型更新分片信息
+        switch (operation) {
+            case "CREATE":
+                // 新建表时，选择一个空闲的Region
+                Region emptyRegion = findEmptyRegion();
+                String shardRange = "0-0"; // 初始分片范围
+                tableShardInfo.put(shardRange, emptyRegion.getRegionId());
+                logger.info("表 {} 初始分片范围: {} -> Region: {}", 
+                    tableName, shardRange, emptyRegion.getRegionId());
+                break;
+
+            case "INSERT":
+                // 插入操作可能需要扩展分片范围
+                if (data instanceof Integer) {
+                    int affectedRows = (Integer) data;
+                    if (affectedRows > 0) {
+                        // 这里可以添加分片范围扩展的逻辑
+                        logger.info("表 {} 插入 {} 行数据", tableName, affectedRows);
+                    }
+                }
+                break;
+
+            case "DELETE":
+                // 删除操作可能需要收缩分片范围
+                if (data instanceof Integer) {
+                    int affectedRows = (Integer) data;
+                    if (affectedRows > 0) {
+                        // 这里可以添加分片范围收缩的逻辑
+                        logger.info("表 {} 删除 {} 行数据", tableName, affectedRows);
+                    }
+                }
+                break;
+        }
+    }
 }
