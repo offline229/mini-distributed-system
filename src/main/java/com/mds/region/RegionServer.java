@@ -4,6 +4,8 @@ import com.mds.region.handler.MasterHandler;
 import com.mds.common.util.MySQLUtil;
 import com.mds.region.handler.ClientHandler;
 import com.mds.region.handler.ZookeeperHandler;
+
+import org.apache.zookeeper.KeeperException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,7 @@ public class RegionServer {
     // 添加副本相关字段
     private final Map<String, RegionServer> replicas; // replicaKey -> RegionServer
     private int currentConnections; // 当前连接数
+    private String connectionStatus = "Idle"; // 默认状态是空闲
 
     public RegionServer(String host, int port, String replicaKey) {
         this.host = host;
@@ -53,6 +56,17 @@ public class RegionServer {
         this.zkHandler = new ZookeeperHandler();
         this.clientHandler = new ClientHandler(this);
         this.masterHandler = new MasterHandler();
+    }
+
+    private int clientPort = -1; // -1 表示没有指定端口
+
+    // 用来设置客户端端口
+    public void setClientPort(int port) {
+        this.clientPort = port;
+    }
+
+    public int getClientPort() {
+        return clientPort;
     }
 
     public void start() {
@@ -102,9 +116,11 @@ public class RegionServer {
 
         return leastLoaded;
     }
+
     public String getServerId() {
         return serverId;
     }
+
     public void stop() {
         try {
             // 1. 停止客户端处理器
@@ -112,42 +128,71 @@ public class RegionServer {
                 clientHandler.stop(); // 假设 ClientHandler 有一个 stop() 方法来停止处理器
                 logger.info("客户端处理器停止");
             }
-    
+
             // 2. 清理与 ZooKeeper 的连接
             if (zkHandler != null) {
                 zkHandler.close(); // 假设 ZookeeperHandler 有一个 close() 方法来关闭连接
                 logger.info("ZooKeeper 连接关闭");
             }
-    
+
             // 3. 清理与 Master 的连接
             if (masterHandler != null) {
                 masterHandler.stop(); // 假设 MasterHandler 有一个 unregisterRegionServer 方法来注销 RegionServer
                 logger.info("RegionServer 从 Master 注销");
             }
-    
+
             // 4. 停止所有分片
             for (Region region : regions.values()) {
                 region.stop(); // 假设 Region 有一个 stop() 方法来停止其操作
                 logger.info("Region {} 停止", region.getRegionId());
             }
 
-    
             logger.info("RegionServer {} 已停止", serverId);
-    
+
         } catch (Exception e) {
             logger.error("停止 RegionServer 失败", e);
         }
     }
-    
-    // 添加连接数管理方法
+
+    // 增加连接数
     public void incrementConnections() {
         currentConnections++;
+        updateConnectionStatus();
         logger.info("当前连接数: {}", currentConnections);
     }
 
+    // 减少连接数
     public void decrementConnections() {
         currentConnections--;
+        updateConnectionStatus();
         logger.info("当前连接数: {}", currentConnections);
+    }
+
+    // 更新连接状态
+    private void updateConnectionStatus() {
+        if (currentConnections == 10) {
+            connectionStatus = "Full";
+        } else if (currentConnections > 5) {
+            connectionStatus = "Busy";
+        } else if (currentConnections < 3) {
+            connectionStatus = "Idle";
+        }
+        // 更新ZooKeeper中的RegionServer数据
+        try {
+            zkHandler.updateRegionServerData(serverId, buildServerData());
+        } catch (KeeperException | InterruptedException e) {
+            logger.error("Error updating RegionServer data in ZooKeeper", e);
+        }
+    }
+
+    // 构建RegionServer数据
+    private String buildServerData() {
+        return String.format("{\"host\": \"%s\", \"port\": %d, \"status\": \"%s\"}", host, port, connectionStatus);
+    }
+
+    // 获取当前连接状态
+    public String getConnectionStatus() {
+        return connectionStatus;
     }
 
     // 添加数据同步方法

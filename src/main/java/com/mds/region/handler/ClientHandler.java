@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 
 public class ClientHandler {
     private static final Logger logger = LoggerFactory.getLogger(ClientHandler.class);
-    private static final int CLIENT_PORT = 8000;
+    private static final int DEFAULT_CLIENT_PORT = 8000;
     private ServerSocket serverSocket;
     private ExecutorService threadPool;
     private DBHandler dbHandler;
@@ -33,7 +33,8 @@ public class ClientHandler {
     }
 
     public void start() throws IOException {
-        serverSocket = new ServerSocket(CLIENT_PORT);
+        int clientPort = regionServer.getClientPort() != -1 ? regionServer.getClientPort() : DEFAULT_CLIENT_PORT;
+        serverSocket = new ServerSocket(clientPort);
         threadPool = Executors.newFixedThreadPool(8); // 固定线程池
 
         Thread serverThread = new Thread(() -> {
@@ -50,7 +51,7 @@ public class ClientHandler {
         });
         serverThread.start();
 
-        System.out.println("ClientHandler 已启动，监听端口：" + CLIENT_PORT);
+        System.out.println("ClientHandler 已启动，监听端口：" + clientPort);
     }
 
     private void handleClientRequest(Socket socket) {

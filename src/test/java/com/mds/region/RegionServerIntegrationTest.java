@@ -37,6 +37,7 @@ public class RegionServerIntegrationTest {
         // RegionServer 的关闭逻辑会在后续实现
     }
 
+    @Test
     public void testCreateTable() throws Exception {
         String tableName = "test_users1";
 
