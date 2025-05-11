@@ -172,16 +172,32 @@ public class RegionServer {
     private void updateConnectionStatus() {
         if (currentConnections == 10) {
             connectionStatus = "Full";
+            System.out.println("连接已满");
         } else if (currentConnections > 5) {
             connectionStatus = "Busy";
+            System.out.println("连接繁忙");
         } else if (currentConnections < 3) {
             connectionStatus = "Idle";
+            System.out.println("连接空闲");
         }
         // 更新ZooKeeper中的RegionServer数据
         try {
-            zkHandler.updateRegionServerData(serverId, buildServerData());
-        } catch (KeeperException | InterruptedException e) {
-            logger.error("Error updating RegionServer data in ZooKeeper", e);
+            if (!zkHandler.isInitialized()) {
+                zkHandler.init();
+            }
+            JSONObject serverData = new JSONObject();
+            serverData.put("host", host);
+            serverData.put("port", port);
+            serverData.put("clientPort", clientPort);
+            serverData.put("replicaKey", replicaKey);
+            serverData.put("connections", currentConnections);
+            serverData.put("status", connectionStatus);
+            serverData.put("regions", new JSONObject(regions.keySet()));
+
+            zkHandler.updateRegionServerData(serverId, serverData.toString());
+            logger.info("更新RegionServer状态成功: {}", serverData.toString());
+        } catch (Exception e) {
+            logger.error("更新RegionServer状态失败", e);
         }
     }
 
