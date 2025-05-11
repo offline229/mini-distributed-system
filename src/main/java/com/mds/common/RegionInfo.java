@@ -5,17 +5,17 @@ public class RegionInfo {
     private String host;
     private int port;
     private int load;
-//    private String status;
+    private long createTime;
 
     public RegionInfo() {
     }
 
-    public RegionInfo(String regionId, String host, int port, int load, String status) {
+    public RegionInfo(String regionId, String host, int port, int load, long createTime) {
         this.regionId = regionId;
         this.host = host;
         this.port = port;
         this.load = load;
-//        this.status = status;
+        this.createTime = createTime;
     }
 
     // Getter / Setter
@@ -31,11 +31,12 @@ public class RegionInfo {
     public int getLoad() {return load;}
     public void setLoad(int load) {this.load = load;}
 
-//    public String getStatus() {return status;}
-//    public void setStatus(String status) {this.status = status;}
+    public long getCreateTime() {return createTime;}
+    public void setCreateTime(long createTime) {this.createTime = createTime;}
+
     @Override
     public String toString() {
-        return String.format("RegionInfo{id=%s, host=%s, port=%d, load=%d}",
-                regionId, host, port, load);
+        return String.format("RegionInfo{id=%s, host=%s, port=%d, load=%d, createTime=%d}",
+                regionId, host, port, load, createTime);
     }
 }

@@ -12,7 +12,7 @@ public class MySQLConnectTest {
     private static final Logger logger = LoggerFactory.getLogger(MySQLConnectTest.class);
     private static final String MYSQL_URL = "jdbc:mysql://localhost:3306/mini_distributed_system";
     private static final String MYSQL_USER = "root";
-    private static final String MYSQL_PASSWORD = "64793416zhu";
+    private static final String MYSQL_PASSWORD = "123456";
 
     @Test
     public void testMySQLConnection() throws Exception {
