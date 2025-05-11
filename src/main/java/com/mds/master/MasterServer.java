@@ -102,6 +102,7 @@ public class MasterServer {
             regionInfo.setHost(host);
             regionInfo.setPort(port);
             regionInfo.setLoad(0);
+            regionInfo.setCreateTime(System.currentTimeMillis());
 
             // 持久化元数据
             metaManager.saveRegionInfo(regionInfo);

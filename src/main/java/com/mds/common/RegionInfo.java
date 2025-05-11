@@ -34,6 +34,21 @@ public class RegionInfo {
     public long getCreateTime() {return createTime;}
     public void setCreateTime(long createTime) {this.createTime = createTime;}
 
+    //生成在 ZooKeeper 中的路径，例如：/regions/region-1
+    public String toZKPath() {
+        return "/regions/" + regionId;
+    }
+
+    //将 RegionInfo 序列化为 JSON 字符串，方便存储到 ZK 节点内容
+    public String toJson() {
+//        return new Gson().toJson(this);
+    }
+
+    //从 JSON 字符串反序列化 RegionInfo 对象
+    public static RegionInfo fromJson(String json) {
+//        return new Gson().fromJson(json, RegionInfo.class);
+    }
+
     @Override
     public String toString() {
         return String.format("RegionInfo{id=%s, host=%s, port=%d, load=%d, createTime=%d}",

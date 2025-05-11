@@ -17,26 +17,24 @@ public class MetaManager {
         String sql = """
             CREATE TABLE IF NOT EXISTS regions (
                 region_id VARCHAR(64) PRIMARY KEY,
-                host VARCHAR(64),
-                port INT,
-                load INT,
-                createTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                host VARCHAR(100) NOT NULL,
+                port INT NOT NULL,
+                load INT DEFAULT 0,
+                createTime BIGINT NOT NULL,
             )
         """;
-        boolean result = MySQLUtil.executeUpdate(sql);
-        if (result) {
-            logger.info("Region元数据表初始化成功");
-        } else {
-            logger.warn("Region元数据表初始化失败");
+        try {
+            MySQLUtil.execute(sql);
+            System.out.println("表 regions 初始化完成");
+        } catch (SQLException e) {
+            System.err.println("初始化表 regions 失败：" + e.getMessage());
         }
     }
 
     //注册regioninfo到mysql中，元数据持久化
     public void saveRegionInfo(RegionInfo info) {
-        String sql = """
-            REPLACE INTO regions (region_id, host, port, load, createTime)
-            VALUES (?, ?, ?, ? ,?)
-        """;
+        String sql = "INSERT INTO regions (region_id, host, port, load, createTime) " +
+                "VALUES (?, ?, ?, ?, ?)";
         boolean result = MySQLUtil.executeUpdate(sql,
                 info.getRegionId(),
                 info.getHost(),
@@ -52,19 +50,27 @@ public class MetaManager {
     }
 
     public List<RegionInfo> loadAllRegions() throws SQLException {
-        List<RegionInfo> list = new ArrayList<>();
-        String sql = "SELECT region_id, host, port, load createTime FROM regions";
+        List<RegionInfo> result = new ArrayList<>();
+        String sql = "SELECT region_id, host, port, load, createTime FROM regions";
         List<Object[]> rows = MySQLUtil.executeQuery(sql);
+
         for (Object[] row : rows) {
-            RegionInfo info = new RegionInfo(
-                    (String) row[0],
-                    (String) row[1],
-                    ((Number) row[2]).intValue(),
-                    ((Number) row[3]).intValue(),
-                    (long) row[4]
-            );
-            list.add(info);
+            RegionInfo region = new RegionInfo();
+            region.setRegionId((String) row[0]);
+            region.setHost((String) row[1]);
+            region.setPort((Integer) row[2]);
+            region.setLoad((Integer) row[3]);
+            region.setCreateTime((Long) row[4]);
+            result.add(region);
         }
-        return list;
+
+        return result;
     }
+
+    //上下线可以更新
+    public static boolean updateRegionStatus(String regionId, int load) {
+        String sql = "UPDATE regions SET load = ? WHERE region_id = ?";
+        return MySQLUtil.executeUpdate(sql, load, regionId);
+    }
+
 }

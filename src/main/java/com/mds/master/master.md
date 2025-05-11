@@ -7,19 +7,21 @@
 - MasterServer
   - 接受请求
   - 分配唯一rid，创建regionInfo
-    - RegionInfo：存rid，host，port，status，load（负载信息、可选）
+    - RegionInfo：存rid，host，port，load（负载信息、可选），createTime
   - 调用写入两个模块的函数
   - 返回rid给region
 - 【先】使用MetaManager写入MySQL——长期管理元数据
-  - 建表regions管理info的信息 table=regionInfo+创建time
+  - 建表regions管理info的信息 table=regionInfo
 - 【后】使用ZKSyncManager写入zk——短期协调、心跳 
 - 
 #### 4.Master 自己暴露一个 Socket 服务端口（接收 Client 的 SQL 请求）
 - 对 Client 的请求做简单响应（返回：你已连接到 Master）
 
-## 【子模块划分】
 
-### MasterElection：使用 Curator LeaderSelector 做主节点选举
+
+### 【子模块划分】
+
+#### 1.MasterElection：使用 Curator LeaderSelector 做主节点选举
 - ZooKeeper（Curator）保证同一时间只有一个 Master 节点处于“主控状态”，并且在当前 Master 宕机时能自动切换到其他候选 Master 节点。
 - 什么是leader selector？
   - Curator 提供的 LeaderSelector 是对 ZooKeeper 临时顺序节点选举机制的封装，用来实现主节点选举和切换，它能： 
@@ -27,23 +29,23 @@
     - 当前主节点挂掉后，自动触发重新选举 
     - 自动回调一个 takeLeadership() 方法 → 你在这方法里写“我成为主”的逻辑
 
-### RegionWatcher：监听 ZooKeeper /regions，维护 Region 列表
+#### 2.RegionWatcher：监听 ZooKeeper /regions，维护 Region 列表
 - 注册 ZK watcher（使用 PathChildrenCache）
 - 提供 getOnlineRegions() 接口供调度器等模块调用
 - 
-### MetaManager：使用 MySQLUtil 存储 region 和表的元信息
+#### 3.MetaManager：使用 MySQLUtil 存储 region 和表的元信息
 - saveRegionInfo(RegionInfo info)：新增或更新 Region 记录
 - getAllRegions()：恢复 Region 列表（如主节点切换）
 - 
-### MasterServer：启动 socket 服务，接收 Client 请求并简单回应
+#### 4.MasterServer：启动 socket 服务，接收 Client 请求并简单回应
 
-### ZKSyncManager：封装 ZooKeeper 的连接和基本路径管理
+#### 5.ZKSyncManager：封装 ZooKeeper 的连接和基本路径管理
 - registerRegion(RegionInfo info)： 
   - 创建 /regions/{regionId} 临时节点 
   - 写入 JSON 数据：{ regionId, host, port, status, load } 
 - updateRegionStatus(regionId, newStatus)：可选扩展
 - 
-### Main：启动类，初始化上面所有模块并启动主循环
+#### 6.Main：启动类，初始化上面所有模块并启动主循环
 
 ## 和region交互流程
 - Region 节点启动后注册到 Master； 
