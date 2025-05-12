@@ -30,9 +30,9 @@ public class MasterElection {
 
                         try {
                             // 启动主节点核心服务
-                            MetaManager metaManager = new MetaManager();
                             RegionWatcher regionWatcher = new RegionWatcher(client);
                             regionWatcher.startWatching();
+                            MetaManager metaManager = new MetaManager(regionWatcher);
                             MasterDispatcher dispatcher = new MasterDispatcher(metaManager, regionWatcher);
 
                             // 启动调度服务（阻塞运行）

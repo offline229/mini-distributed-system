@@ -1,5 +1,6 @@
 package com.mds.common;
 
+import com.google.gson.Gson;
 public class RegionInfo {
     private String regionId;
     private String host;
@@ -41,12 +42,12 @@ public class RegionInfo {
 
     //将 RegionInfo 序列化为 JSON 字符串，方便存储到 ZK 节点内容
     public String toJson() {
-//        return new Gson().toJson(this);
+        return new Gson().toJson(this);
     }
 
     //从 JSON 字符串反序列化 RegionInfo 对象
     public static RegionInfo fromJson(String json) {
-//        return new Gson().fromJson(json, RegionInfo.class);
+        return new Gson().fromJson(json, RegionInfo.class);
     }
 
     @Override
