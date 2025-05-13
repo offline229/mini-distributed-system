@@ -20,7 +20,12 @@
 
 
 ### 【子模块划分】
-
+MasterElection: 处理选主逻辑。
+RegionWatcher: 监听ZooKeeper节点，维护在线Region列表。
+ZKSyncManager: 管理ZooKeeper的连接和路径操作。
+MetaManager: 管理MySQL中存储的元信息。
+MasterServer: 启动服务监听Client请求。
+MasterDispatcher: 用于解析和分发SQL请求
 #### 1.MasterElection：使用 Curator LeaderSelector 做主节点选举
 - ZooKeeper（Curator）保证同一时间只有一个 Master 节点处于“主控状态”，并且在当前 Master 宕机时能自动切换到其他候选 Master 节点。
 - 什么是leader selector？
