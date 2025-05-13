@@ -23,6 +23,7 @@ public class MasterHandler {
             out = new PrintWriter(masterSocket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(masterSocket.getInputStream()));
             logger.info("已连接到Master: {}:{}", host, port);
+            setTestMode(false); // 连接成功后关闭测试模式
         } catch (IOException e) {
             logger.warn("连接Master失败，进入测试模式: {}", e.getMessage());
             setTestMode(true);

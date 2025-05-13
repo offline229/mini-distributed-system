@@ -58,18 +58,47 @@ public class Client {
     public Object executeSql(String sql, Object[] params) throws Exception {
         // 1. 向Master请求获取RegionServer信息
         JSONObject request = new JSONObject();
-        request.put("type", "GET_REGIONSERVER");
+        request.put("type", "SQL"); // 改为 "SQL" 类型
         request.put("sql", sql);
+        if (params != null) {
+            request.put("params", params);
+        }
+
+        System.out.println("发送请求到Master: " + request.toString(2));
 
         JSONObject response = masterHandler.sendRequest(request);
-        String regionHost = response.getString("host");
-        int regionPort = response.getInt("port");
+        if (response == null) {
+            throw new Exception("从Master获取响应为空");
+        }
+        System.out.println("收到Master响应: " + response.toString(2));
 
+        // 检查响应状态
+        if ("error".equals(response.getString("status"))) {
+            throw new Exception(response.getString("message"));
+        }
+
+        // 根据响应类型处理
+        String responseType = response.getString("type");
+        if ("DML_REDIRECT".equals(responseType)) {
+            // 获取RegionServer信息
+            String regionHost = response.getString("host");
+            int regionPort = response.getInt("port");
+            System.out.println("获取到RegionServer地址: " + regionHost + ":" + regionPort);
+
+            // 执行SQL
+            return executeOnRegionServer(sql, params, regionHost, regionPort);
+        } else {
+            throw new Exception("不支持的响应类型: " + responseType);
+        }
+    }
+
+    private Object executeOnRegionServer(String sql, Object[] params, String host, int port) throws Exception {
         try {
-            // 2. 连接RegionServer并执行SQL
-            regionHandler.connect(regionHost, regionPort);
+            // 连接RegionServer
+            regionHandler.connect(host, port);
+            System.out.println("成功连接到RegionServer");
 
-            // 3. 发送SQL请求到RegionServer
+            // 构建SQL请求
             JSONObject sqlRequest = new JSONObject();
             sqlRequest.put("operation", getSqlOperation(sql));
             sqlRequest.put("sql", sql);
@@ -77,13 +106,16 @@ public class Client {
                 sqlRequest.put("params", params);
             }
 
-            // 4. 获取执行结果
-            return regionHandler.sendRequest(sqlRequest);
+            System.out.println("发送SQL请求到RegionServer: " + sqlRequest.toString(2));
+
+            // 执行SQL并返回结果
+            Object result = regionHandler.sendRequest(sqlRequest);
+            System.out.println("RegionServer执行完成");
+            return result;
         } catch (Exception e) {
-            System.out.println("执行SQL失败: {}" + e.getMessage());
+            System.err.println("RegionServer执行失败: " + e.getMessage());
             throw e;
         }
-
     }
 
     private String getSqlOperation(String sql) {
