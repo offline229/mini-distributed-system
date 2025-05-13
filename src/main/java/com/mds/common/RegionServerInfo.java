@@ -70,6 +70,10 @@ public class RegionServerInfo {
         private String status; // New field for the status of the server
         private int connections; // New field for the number of connections
 
+        // 添加默认构造函数
+        public HostPortStatus() {
+        }
+
         public HostPortStatus(String host, int port, String status, int connections) {
             this.host = host;
             this.port = port;

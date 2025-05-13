@@ -14,7 +14,7 @@ public class ZookeeperHandler {
     private static final int ZK_TIMEOUT = 3000;
     private static final String REGION_PATH = "/regions";
     private static final String ZK_ROOT = "/mds";
-    private static final String REGION_SERVER_PATH = ZK_ROOT + "/region-server";
+    private static final String REGION_SERVER_PATH = ZK_ROOT + "/regions";
 
     private ZooKeeper zk;
     private boolean initialized = false; // 新增
@@ -22,9 +22,11 @@ public class ZookeeperHandler {
     public boolean isInitialized() {
         return initialized && zk != null;
     }
+
     // 初始化ZooKeeper连接
     public void init() throws IOException {
-        if (isInitialized()) return;
+        if (isInitialized())
+            return;
         zk = new ZooKeeper(ZK_HOST, ZK_TIMEOUT, new Watcher() {
             @Override
             public void process(WatchedEvent event) {

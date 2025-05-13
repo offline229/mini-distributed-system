@@ -9,7 +9,7 @@ import org.apache.zookeeper.KeeperException;
 import java.util.*;
 
 public class ZKSyncManager {
-    private static final String BASE_PATH = "/regions";
+    private static final String BASE_PATH = "/mds/regions";
     private final ZooKeeper zk;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -99,7 +99,8 @@ public class ZKSyncManager {
     public RegionServerInfo getRegion(String regionserverId) throws Exception {
         String path = BASE_PATH + "/" + regionserverId;
         try {
-            if (zk.exists(path, false) == null) return null;
+            if (zk.exists(path, false) == null)
+                return null;
             byte[] data = zk.getData(path, false, null);
             return objectMapper.readValue(data, RegionServerInfo.class);
         } catch (Exception e) {

@@ -1,6 +1,8 @@
 package com.mds.region.handler;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -127,10 +129,8 @@ public class MasterHandler {
                 registerRequest.put("replicaKey", replicaKey);
 
                 // 6. 发送注册请求
-                sendRequest(registerRequest);
-
-                // 7. TODO: 处理响应...
-                return "RegionServer-" + replicaKey;
+                // 发送请求并等待响应
+                return sendRequestAndWaitResponse(registerRequest);
 
             } catch (IOException e) {
                 System.out.println("连接Master失败，进入测试模式: " + e.getMessage());
@@ -145,17 +145,34 @@ public class MasterHandler {
         }
     }
 
-    private void sendRequest(JSONObject request) throws IOException {
+    private String sendRequestAndWaitResponse(JSONObject request) throws IOException {
         if (testMode) {
             System.out.println("[测试模式] 模拟发送请求到Master：" + request.toString(2));
-            return;
+            return "RegionServerTest-1";
         }
 
         try {
             if (masterSocket != null && masterSocket.isConnected()) {
+                // 发送请求
                 PrintWriter out = new PrintWriter(masterSocket.getOutputStream(), true);
+                BufferedReader in = new BufferedReader(new InputStreamReader(masterSocket.getInputStream()));
+
                 out.println(request.toString());
                 System.out.println("发送请求到Master：" + request.toString(2));
+
+                // 等待响应
+                String responseStr = in.readLine();
+                System.out.println("收到Master响应：" + responseStr);
+
+                // 解析响应
+                JSONObject response = new JSONObject(responseStr);
+                if ("ok".equals(response.getString("status"))) {
+                    String regionserverId = response.getString("regionserverId");
+                    System.out.println("注册成功，获得ID: " + regionserverId);
+                    return regionserverId;
+                } else {
+                    throw new IOException("注册失败: " + response.getString("message"));
+                }
             } else {
                 throw new IOException("未连接到Master");
             }
