@@ -12,9 +12,9 @@ import java.io.IOException;
 public class ZookeeperHandler {
     private static final String ZK_HOST = "localhost:2181";
     private static final int ZK_TIMEOUT = 3000;
-    private static final String REGION_PATH = "/regions";
+    private static final String REGION_PATH = "/regions-data";
     private static final String ZK_ROOT = "/mds";
-    private static final String REGION_SERVER_PATH = ZK_ROOT + "/regions";
+    private static final String REGION_SERVER_PATH = ZK_ROOT + "/regions-data";
 
     private ZooKeeper zk;
     private boolean initialized = false; // 新增

@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.List;
@@ -22,58 +21,48 @@ public class MasterHandler {
     private Socket masterSocket;
     private String masterHost = "localhost";
     private int masterPort = 8000;
-    private volatile boolean isRunning;
     private boolean testMode = false; // 添加测试模式标志
     private ExecutorService threadPool;
     private ZooKeeper zooKeeper; // 添加ZK客户端
     private static final int HEARTBEAT_INTERVAL = 5000; // 5秒一次心跳
     private volatile boolean isHeartbeatRunning;
     private Thread heartbeatThread;
+    private String regionserverId; // 添加字段
+    private String host; // 添加字段
+    private int port; // 添加字段quiqui
 
     public void start() throws IOException {
         threadPool = Executors.newFixedThreadPool(2);
-        isRunning = true;
-
-        // 只在非测试模式下启动心跳
-        if (!testMode) {
-            startHeartbeat();
-        } else {
-            System.out.println("测试模式：不启动心跳");
-        }
-
+        startHeartbeat();
+        System.out.println("心跳启动");
         System.out.println("MasterHandler 已启动" + (testMode ? "(测试模式)" : ""));
     }
 
-    private void handleMasterRequest(Socket socket) {
-        // 处理来自 Master 的请求
-        System.out.println("处理来自 Master 的请求...");
-        // TODO: 实现具体的指令处理逻辑
-    }
-
     private void startHeartbeat() {
+        if (testMode) {
+            System.out.println("[测试模式] 跳过心跳启动");
+            return;
+        }
+
         isHeartbeatRunning = true;
         heartbeatThread = new Thread(() -> {
-            while (isHeartbeatRunning && !Thread.currentThread().isInterrupted()) {
+            while (isHeartbeatRunning) {
                 try {
                     sendHeartbeat();
                     Thread.sleep(HEARTBEAT_INTERVAL);
+                } catch (IOException e) {
+                    System.err.println("发送心跳失败: " + e.getMessage());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    System.out.println("心跳线程被中断");
                     break;
-                } catch (Exception e) {
-                    System.err.println("发送心跳失败: " + e.getMessage());
                 }
             }
-        }, "heartbeat-thread");
+        }, "HeartbeatThread");
+        heartbeatThread.setDaemon(true);
         heartbeatThread.start();
+        System.out.println("心跳线程已启动，间隔: " + HEARTBEAT_INTERVAL + "ms");
     }
 
-    public void setTestMode(boolean testMode) {
-        this.testMode = testMode;
-    }
-
-    // 修改心跳发送方法，增加测试模式判断
     private void sendHeartbeat() throws IOException {
         if (testMode) {
             System.out.println("[测试模式] 跳过心跳发送");
@@ -81,17 +70,33 @@ public class MasterHandler {
         }
 
         // 构建心跳消息
-        Map<String, Object> heartbeat = new HashMap<>();
+        JSONObject heartbeat = new JSONObject();
         heartbeat.put("type", "HEARTBEAT");
+        heartbeat.put("regionserverId", this.regionserverId); // 添加 regionserverId
+        heartbeat.put("host", this.host); // 添加 host
+        heartbeat.put("port", this.port); // 添加 port
+        heartbeat.put("connections", 0); // 添加当前连接数
         heartbeat.put("timestamp", System.currentTimeMillis());
         heartbeat.put("status", "ACTIVE");
 
-        // 发送心跳
-        sendRequest(heartbeat);
+        // 直接发送心跳，不等待响应
+        if (masterSocket != null && masterSocket.isConnected()) {
+            PrintWriter out = new PrintWriter(masterSocket.getOutputStream(), true);
+            out.println(heartbeat.toString());
+            System.out.println("发送心跳到Master：" + heartbeat.toString(2));
+        } else {
+            throw new IOException("未连接到Master");
+        }
+    }
+
+    public void setTestMode(boolean testMode) {
+        this.testMode = testMode;
     }
 
     public String registerRegionServer(String host, int port, String replicaKey) throws IOException {
         try {
+            this.host = host;
+            this.port = port;
             // 1. 从ZK获取活跃master节点列表
             List<String> activeNodes = zooKeeper.getChildren("/mds/master/active", false);
             if (activeNodes == null || activeNodes.isEmpty()) {
@@ -129,8 +134,14 @@ public class MasterHandler {
                 registerRequest.put("replicaKey", replicaKey);
 
                 // 6. 发送注册请求
-                // 发送请求并等待响应
-                return sendRequestAndWaitResponse(registerRequest);
+                // 获取响应并保存ID
+                String id = sendRequestAndWaitResponse(registerRequest);
+                this.regionserverId = id;
+
+                // 注册成功后启动心跳
+                startHeartbeat();
+
+                return id;
 
             } catch (IOException e) {
                 System.out.println("连接Master失败，进入测试模式: " + e.getMessage());
@@ -224,7 +235,6 @@ public class MasterHandler {
     }
 
     public void stop() {
-        isRunning = false;
         isHeartbeatRunning = false;
 
         // 停止心跳线程

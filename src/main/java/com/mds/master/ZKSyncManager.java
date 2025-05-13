@@ -9,7 +9,7 @@ import org.apache.zookeeper.KeeperException;
 import java.util.*;
 
 public class ZKSyncManager {
-    private static final String BASE_PATH = "/mds/regions";
+    private static final String BASE_PATH = "/mds/regions-meta";
     private final ZooKeeper zk;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
