@@ -58,7 +58,7 @@ public class Client {
     public Object executeSql(String sql, Object[] params) throws Exception {
         // 1. 向Master请求获取RegionServer信息
         JSONObject request = new JSONObject();
-        request.put("type", "SQL"); // 改为 "SQL" 类型
+        request.put("type", "SQL");
         request.put("sql", sql);
         if (params != null) {
             request.put("params", params);
@@ -66,30 +66,25 @@ public class Client {
 
         System.out.println("发送请求到Master: " + request.toString(2));
 
+        // 2. 获取Master响应
         JSONObject response = masterHandler.sendRequest(request);
         if (response == null) {
             throw new Exception("从Master获取响应为空");
         }
         System.out.println("收到Master响应: " + response.toString(2));
 
-        // 检查响应状态
+        // 3. 检查响应状态
         if ("error".equals(response.getString("status"))) {
             throw new Exception(response.getString("message"));
         }
 
-        // 根据响应类型处理
-        String responseType = response.getString("type");
-        if ("DML_REDIRECT".equals(responseType)) {
-            // 获取RegionServer信息
-            String regionHost = response.getString("host");
-            int regionPort = response.getInt("port");
-            System.out.println("获取到RegionServer地址: " + regionHost + ":" + regionPort);
+        // 4. 获取RegionServer信息并执行
+        String regionHost = response.getString("host");
+        int regionPort = response.getInt("port");
+        System.out.println("获取到RegionServer地址: " + regionHost + ":" + regionPort);
 
-            // 执行SQL
-            return executeOnRegionServer(sql, params, regionHost, regionPort);
-        } else {
-            throw new Exception("不支持的响应类型: " + responseType);
-        }
+        // 5. 直接执行SQL
+        return executeOnRegionServer(sql, params, regionHost, regionPort);
     }
 
     private Object executeOnRegionServer(String sql, Object[] params, String host, int port) throws Exception {
@@ -100,18 +95,15 @@ public class Client {
 
             // 构建SQL请求
             JSONObject sqlRequest = new JSONObject();
+            sqlRequest.put("type", "CLIENT_REQUEST"); // 添加请求类型
             sqlRequest.put("operation", getSqlOperation(sql));
             sqlRequest.put("sql", sql);
             if (params != null) {
                 sqlRequest.put("params", params);
             }
 
-            System.out.println("发送SQL请求到RegionServer: " + sqlRequest.toString(2));
-
-            // 执行SQL并返回结果
-            Object result = regionHandler.sendRequest(sqlRequest);
-            System.out.println("RegionServer执行完成");
-            return result;
+            // 发送请求并获取结果
+            return regionHandler.sendRequest(sqlRequest);
         } catch (Exception e) {
             System.err.println("RegionServer执行失败: " + e.getMessage());
             throw e;
@@ -168,7 +160,7 @@ public class Client {
     }
 
     /*
-     * CREATE TABLE users (id INT PRIMARY KEY, nameVARCHAR(50), age INT)
+     * CREATE TABLE users1 (id INT PRIMARY KEY, nameVARCHAR(50), age INT)
      * 
      * INSERT INTO users (id, name, age) VALUES (1, "测试用户1", 25)
      * 

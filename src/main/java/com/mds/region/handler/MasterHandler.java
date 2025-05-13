@@ -265,4 +265,19 @@ public class MasterHandler {
         }
         System.out.println("MasterHandler 已停止");
     }
+
+    public void handleHeartbeat(JSONObject request, PrintWriter out) {
+        try {
+            // 处理心跳请求
+            JSONObject response = new JSONObject();
+            response.put("status", "ok");
+            response.put("timestamp", System.currentTimeMillis());
+            out.println(response.toString());
+        } catch (Exception e) {
+            JSONObject error = new JSONObject();
+            error.put("status", "error");
+            error.put("message", e.getMessage());
+            out.println(error.toString());
+        }
+    }
 }

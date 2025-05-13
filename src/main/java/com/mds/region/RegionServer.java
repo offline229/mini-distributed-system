@@ -10,6 +10,12 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -18,11 +24,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class RegionServer {
     private static final Logger logger = LoggerFactory.getLogger(RegionServer.class);
@@ -46,6 +53,9 @@ public class RegionServer {
     private int currentConnections; // 当前连接数
     private String connectionStatus = "Idle"; // 默认状态是空闲
 
+    private ServerSocket serverSocket;
+    private final ExecutorService executorService;
+
     public RegionServer(String host, int port, String replicaKey) {
         this.host = host;
         this.port = port;
@@ -57,6 +67,7 @@ public class RegionServer {
         this.zkHandler = new ZookeeperHandler();
         this.clientHandler = new ClientHandler(this);
         this.masterHandler = new MasterHandler();
+        this.executorService = Executors.newFixedThreadPool(10);
     }
 
     private int clientPort = -1; // -1 表示没有指定端口
@@ -93,13 +104,67 @@ public class RegionServer {
             updateZkInfo();
             logger.info("ZK节点更新完成");
 
-            // 6. 启动客户端处理器
-            clientHandler.start();
+            // 6. 启动统一的请求处理服务
+            serverSocket = new ServerSocket(port);
+            logger.info("开始监听端口: {}", port);
+
+            // 启动请求处理线程
+            startRequestHandler();
+
             logger.info("RegionServer启动成功: {}", serverId);
 
         } catch (Exception e) {
             logger.error("RegionServer启动失败", e);
             throw new RuntimeException(e);
+        }
+    }
+
+    private void startRequestHandler() {
+        Thread handlerThread = new Thread(() -> {
+            while (!serverSocket.isClosed()) {
+                try {
+                    Socket socket = serverSocket.accept();
+                    executorService.submit(() -> handleRequest(socket));
+                } catch (IOException e) {
+                    if (!serverSocket.isClosed()) {
+                        logger.error("接受连接失败", e);
+                    }
+                }
+            }
+        }, "RequestHandler");
+        handlerThread.start();
+    }
+
+    private void handleRequest(Socket socket) {
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+
+            String requestLine = in.readLine();
+            if (requestLine == null)
+                return;
+
+            JSONObject request = new JSONObject(requestLine);
+            String type = request.getString("type");
+
+            switch (type) {
+                case "HEARTBEAT":
+                    masterHandler.handleHeartbeat(request, out);
+                    break;
+                case "CLIENT_REQUEST":
+                    clientHandler.handleRequest(request, out);
+                    break;
+                default:
+                    logger.warn("未知的请求类型: {}", type);
+                    break;
+            }
+        } catch (Exception e) {
+            logger.error("处理请求失败", e);
+        } finally {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                logger.error("关闭Socket失败", e);
+            }
         }
     }
 
@@ -147,6 +212,16 @@ public class RegionServer {
                 region.stop(); // 假设 Region 有一个 stop() 方法来停止其操作
                 logger.info("Region {} 停止", region.getRegionId());
             }
+
+            // 5. 关闭ServerSocket
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+                logger.info("ServerSocket 关闭");
+            }
+
+            // 6. 关闭线程池
+            executorService.shutdown();
+            logger.info("线程池关闭");
 
             logger.info("RegionServer {} 已停止", serverId);
 
@@ -453,14 +528,9 @@ public class RegionServer {
             if (host.isEmpty()) {
                 host = "localhost";
             }
-
-            System.out.print("请输入与Master通信的端口 (默认 8000): ");
-            String masterPortStr = scanner.nextLine().trim();
-            int masterPort = masterPortStr.isEmpty() ? 8000 : Integer.parseInt(masterPortStr);
-
-            System.out.print("请输入与Client通信的端口 (默认 8001): ");
-            String clientPortStr = scanner.nextLine().trim();
-            int clientPort = clientPortStr.isEmpty() ? 8001 : Integer.parseInt(clientPortStr);
+            System.out.print("请输入服务端口 (默认 8100): ");
+            String portStr = scanner.nextLine().trim();
+            int port = portStr.isEmpty() ? 8100 : Integer.parseInt(portStr);
 
             System.out.print("请输入副本标识 (默认 1): ");
             String replicaKey = scanner.nextLine().trim();
@@ -470,15 +540,13 @@ public class RegionServer {
 
             // 2. 创建并启动 RegionServer
             System.out.println("\n正在启动 RegionServer...");
-            RegionServer server = new RegionServer(host, masterPort, replicaKey);
-            server.setClientPort(clientPort); // 设置客户端端口
+            RegionServer server = new RegionServer(host, port, replicaKey);
             server.start();
 
             // 3. 打印服务器信息
             System.out.println("\n=== RegionServer 信息 ===");
             System.out.println("地址: " + host);
-            System.out.println("Master通信端口: " + masterPort);
-            System.out.println("Client通信端口: " + clientPort);
+            System.out.println("服务端口: " + port);
             System.out.println("副本标识: " + replicaKey);
             System.out.println("服务器ID: " + server.getServerId());
 

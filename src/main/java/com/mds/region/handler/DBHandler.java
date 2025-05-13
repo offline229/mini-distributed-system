@@ -20,11 +20,11 @@ public class DBHandler {
 
     // 执行结果类
     public static class ExecuteResult {
-        private final Object data;           // 执行结果数据
-        private final String operation;      // 操作类型
-        private final String tableName;      // 表名
+        private final Object data; // 执行结果数据
+        private final String operation; // 操作类型
+        private final String tableName; // 表名
         private final boolean isDataChanged; // 是否改变了数据
-        private final String message;        // 附加信息
+        private final String message; // 附加信息
 
         public ExecuteResult(Object data, String operation, String tableName, boolean isDataChanged, String message) {
             this.data = data;
@@ -34,11 +34,25 @@ public class DBHandler {
             this.message = message;
         }
 
-        public Object getData() { return data; }
-        public String getOperation() { return operation; }
-        public String getTableName() { return tableName; }
-        public boolean isDataChanged() { return isDataChanged; }
-        public String getMessage() { return message; }
+        public Object getData() {
+            return data;
+        }
+
+        public String getOperation() {
+            return operation;
+        }
+
+        public String getTableName() {
+            return tableName;
+        }
+
+        public boolean isDataChanged() {
+            return isDataChanged;
+        }
+
+        public String getMessage() {
+            return message;
+        }
 
         @Override
         public String toString() {
@@ -74,8 +88,8 @@ public class DBHandler {
             if (isDDL(operation)) {
                 stmt = conn.createStatement();
                 stmt.execute(sql);
-                return new ExecuteResult("SQL执行成功", operation, tableName, true, 
-                    String.format("表 %s 的DDL操作执行成功", tableName));
+                return new ExecuteResult("SQL执行成功", operation, tableName, true,
+                        String.format("表 %s 的DDL操作执行成功", tableName));
             }
 
             // DML和DQL操作
@@ -92,7 +106,7 @@ public class DBHandler {
             } else {
                 int affectedRows = pstmt.executeUpdate();
                 return new ExecuteResult(affectedRows, operation, tableName, true,
-                    String.format("影响行数: %d", affectedRows));
+                        String.format("影响行数: %d", affectedRows));
             }
 
         } catch (SQLException e) {

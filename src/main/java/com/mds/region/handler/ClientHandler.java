@@ -111,4 +111,33 @@ public class ClientHandler {
             threadPool.shutdown();
         System.out.println("ClientHandler 已停止");
     }
+
+    public void handleRequest(JSONObject request, PrintWriter out) {
+        // 处理客户端SQL请求
+        try {
+            String sql = request.getString("sql");
+            Object[] params = request.has("params") ? request.getJSONArray("params").toList().toArray() : null;
+
+            Object result = regionServer.handleRequest(sql, params);
+            sendResponse(out, result);
+        } catch (Exception e) {
+            sendError(out, e.getMessage());
+        }
+    }
+
+    private void sendError(PrintWriter out, String message) {
+        JSONObject errorResponse = new JSONObject()
+                .put("status", "error")
+                .put("message", message)
+                .put("data", JSONObject.NULL);
+        out.println(errorResponse.toString());
+    }
+
+    private void sendResponse(PrintWriter out, Object result) {
+        JSONObject response = new JSONObject()
+                .put("status", "success")
+                .put("data", result != null ? result : JSONObject.NULL)
+                .put("message", "");
+        out.println(response.toString());
+    }
 }
