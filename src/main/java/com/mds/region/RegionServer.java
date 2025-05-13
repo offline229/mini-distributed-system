@@ -16,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -441,53 +442,80 @@ public class RegionServer {
         }
     }
 
-    // 测试用主方法
     public static void main(String[] args) {
-        RegionServer server = new RegionServer("localhost", 8000, "1");
-        server.start();
-
-        // 打印分片信息
-        server.printShardingInfo();
+        Scanner scanner = new Scanner(System.in);
 
         try {
-            // 测试SQL请求
-            System.out.println("\n=== SQL请求测试 ===");
+            // 1. 获取服务器配置
+            System.out.println("=== RegionServer 配置 ===");
+            System.out.print("请输入服务器地址 (默认 localhost): ");
+            String host = scanner.nextLine().trim();
+            if (host.isEmpty()) {
+                host = "localhost";
+            }
 
-            // 1. 测试带分片键的查询
-            String sql1 = "SELECT * FROM users WHERE id = 5";
-            System.out.println("\n执行SQL: " + sql1);
-            Object result1 = server.handleRequest(sql1, null);
-            System.out.println("查询结果: " + result1);
+            System.out.print("请输入与Master通信的端口 (默认 8000): ");
+            String masterPortStr = scanner.nextLine().trim();
+            int masterPort = masterPortStr.isEmpty() ? 8000 : Integer.parseInt(masterPortStr);
 
-            // 2. 测试不带分片键的查询
-            String sql2 = "SELECT * FROM users";
-            System.out.println("\n执行SQL: " + sql2);
-            Object result2 = server.handleRequest(sql2, null);
-            System.out.println("查询结果: " + result2);
+            System.out.print("请输入与Client通信的端口 (默认 8001): ");
+            String clientPortStr = scanner.nextLine().trim();
+            int clientPort = clientPortStr.isEmpty() ? 8001 : Integer.parseInt(clientPortStr);
 
-            // 3. 测试插入操作
-            String sql3 = "INSERT INTO users(id, name, age) VALUES(?, ?, ?)";
-            Object[] params = { 15, "test_user", 25 }; // 假设为用户提供了一个年龄值，例如 25
-            System.out.println("\n执行SQL: " + sql3 + ", 参数: [15, 'test_user', 25]");
-            Object result3 = server.handleRequest(sql3, params);
-            System.out.println("插入结果: " + result3);
+            System.out.print("请输入副本标识 (默认 1): ");
+            String replicaKey = scanner.nextLine().trim();
+            if (replicaKey.isEmpty()) {
+                replicaKey = "1";
+            }
 
-            // 4. 测试更新操作
-            String sql4 = "UPDATE users SET name = ? WHERE id = ?";
-            Object[] updateParams = { "updated_user", 15 };
-            System.out.println("\n执行SQL: " + sql4 + ", 参数: ['updated_user', 15]");
-            Object result4 = server.handleRequest(sql4, updateParams);
-            System.out.println("更新结果: " + result4);
+            // 2. 创建并启动 RegionServer
+            System.out.println("\n正在启动 RegionServer...");
+            RegionServer server = new RegionServer(host, masterPort, replicaKey);
+            server.setClientPort(clientPort); // 设置客户端端口
+            server.start();
+
+            // 3. 打印服务器信息
+            System.out.println("\n=== RegionServer 信息 ===");
+            System.out.println("地址: " + host);
+            System.out.println("Master通信端口: " + masterPort);
+            System.out.println("Client通信端口: " + clientPort);
+            System.out.println("副本标识: " + replicaKey);
+            System.out.println("服务器ID: " + server.getServerId());
+
+            // 4. 打印分片信息
+            server.printShardingInfo();
+
+            // 5. 等待命令
+            System.out.println("\n=== 服务器运行中 (输入 'quit' 退出) ===");
+            while (true) {
+                String command = scanner.nextLine().trim().toLowerCase();
+                if ("quit".equals(command)) {
+                    System.out.println("正在停止服务器...");
+                    server.stop();
+                    break;
+                } else if ("status".equals(command)) {
+                    System.out.println("当前状态: " + server.getConnectionStatus());
+                    System.out.println("当前连接数: " + server.currentConnections);
+                    server.printShardingInfo();
+                } else if ("help".equals(command)) {
+                    System.out.println("可用命令:");
+                    System.out.println("  status - 显示服务器状态");
+                    System.out.println("  quit   - 退出服务器");
+                    System.out.println("  help   - 显示帮助信息");
+                }
+            }
 
         } catch (Exception e) {
-            System.err.println("测试执行失败: " + e.getMessage());
+            System.err.println("服务器运行错误: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            scanner.close();
         }
     }
 
     // 用于测试的辅助方法
     // 增强打印方法
-    private void printShardingInfo() {
+    public void printShardingInfo() {
         System.out.println("\n=== 表分片信息 ===");
         tableShards.forEach((table, shards) -> {
             System.out.println("\nTable: " + table);
