@@ -78,7 +78,7 @@ public class MasterDispatcher {
             
             response.put("type", RESPONSE_TYPE_DML_REDIRECT);
             response.put("regionId", targetRegion.getRegionserverID());
-            response.put("replicaKey", targetRegion.getReplicaKey());
+            // response.put("replicaKey", targetRegion.getReplicaKey());
             response.put("host", optimalHost.getHost());
             response.put("port", optimalHost.getPort());
             
