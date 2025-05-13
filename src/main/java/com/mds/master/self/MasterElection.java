@@ -1,5 +1,7 @@
 package com.mds.master.self;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mds.common.MasterInfo;
 import com.mds.master.MasterDispatcher;
 import com.mds.master.RegionWatcher;
 import com.mds.master.ZKSyncManager;
@@ -9,38 +11,52 @@ import org.apache.curator.framework.recipes.leader.LeaderSelector;
 import org.apache.curator.framework.recipes.leader.LeaderSelectorListenerAdapter;
 import org.apache.zookeeper.CreateMode;
 
+import java.net.InetAddress;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Date;
 
 public class MasterElection {
-    private static final String MASTER_BASE_PATH = "/master";          // 基础路径
-    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";    // 活跃主节点路径
-    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";  // 备选节点路径
-    private static final int MASTER_PORT = 8000;      // Master服务端口
+    private static final String MASTER_BASE_PATH = "/master";          
+    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";    
+    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";  
+    private static final int MASTER_PORT = 8000;      
 
     private final CuratorFramework zkClient;
     private final LeaderSelector leaderSelector;
     private final String masterID;
     private final AtomicBoolean isRunning;
+    private final ObjectMapper objectMapper;
     private CountDownLatch masterLatch;
     private volatile MasterServer masterServer;
     private volatile RegionWatcher regionWatcher;
     private volatile MasterDispatcher dispatcher;
     private volatile MetaManager metaManager;
     private volatile ZKSyncManager zkSyncManager;
+    private volatile MasterInfo masterInfo;
 
     public MasterElection(CuratorFramework zkClient, String masterID) {
         this.zkClient = zkClient;
         this.masterID = masterID;
         this.isRunning = new AtomicBoolean(true);
+        this.objectMapper = new ObjectMapper();
 
-        // 初始化ZK路径
-        initializePaths();
-        
-        // 注册为备选节点
-        registerAsStandby();
+        try {
+            // 初始化MasterInfo
+            this.masterInfo = new MasterInfo(
+                masterID,
+                InetAddress.getLocalHost().getHostAddress(),
+                MASTER_PORT,
+                "standby",
+                System.currentTimeMillis()
+            );
 
-        this.leaderSelector = new LeaderSelector(
+            // 初始化ZK路径
+            initializePaths();
+            
+            // 初始化LeaderSelector
+            this.leaderSelector = new LeaderSelector(
                 zkClient,
                 MASTER_BASE_PATH,
                 new LeaderSelectorListenerAdapter() {
@@ -50,93 +66,58 @@ public class MasterElection {
                         masterLatch = new CountDownLatch(1);
 
                         try {
-                            // 转换为活跃节点
+                            // 升级为活跃节点
                             promoteToActive();
-
-                            // 初始化各个组件
+                            // 初始化组件
                             initializeComponents(client);
-
-                            // 启动所有服务
+                            // 启动服务
                             startServices();
-
-                            // 等待直到被中断或主动退出
-                            waitForInterruption();
-
-                        } catch (Exception e) {
-                            System.err.println("主节点运行异常：" + masterID);
-                            e.printStackTrace();
+                            
+                            // 保持运行直到被中断
+                            while (isRunning.get() && !Thread.currentThread().isInterrupted()) {
+                                Thread.sleep(1000);
+                                // 检查关键组件状态
+                                if (!checkComponentsHealth()) {
+                                    break;
+                                }
+                            }
                         } finally {
-                            // 降级为备选节点
-                            demoteToStandby();
                             cleanup();
                         }
                     }
                 }
-        );
-        this.leaderSelector.autoRequeue();  // 掉线则重新参选
-    }
-
-    private void initializePaths() {
-        try {
-            ensurePath(MASTER_BASE_PATH);
-            ensurePath(ACTIVE_PATH);
-            ensurePath(STANDBY_PATH);
+            );
+            
+            this.leaderSelector.autoRequeue(); // 自动重新参与选举
+            
+            // 注册为备选节点
+            registerAsStandby();
+            
         } catch (Exception e) {
-            throw new RuntimeException("初始化ZK路径失败", e);
+            throw new RuntimeException("初始化MasterElection失败", e);
         }
     }
 
-    private void ensurePath(String path) throws Exception {
+    private void initializePaths() throws Exception {
+        createIfNotExists(MASTER_BASE_PATH);
+        createIfNotExists(ACTIVE_PATH);
+        createIfNotExists(STANDBY_PATH);
+    }
+
+    private void createIfNotExists(String path) throws Exception {
         if (zkClient.checkExists().forPath(path) == null) {
             zkClient.create()
                     .creatingParentsIfNeeded()
                     .withMode(CreateMode.PERSISTENT)
                     .forPath(path);
-            System.out.println("创建路径: " + path);
-        }
-    }
-
-    private void registerAsStandby() {
-        try {
-            String standbyPath = STANDBY_PATH + "/" + masterID;
-            zkClient.create()
-                    .withMode(CreateMode.EPHEMERAL)
-                    .forPath(standbyPath);
-            System.out.println("注册为备选节点: " + standbyPath);
-        } catch (Exception e) {
-            throw new RuntimeException("注册备选节点失败", e);
-        }
-    }
-
-    private void promoteToActive() throws Exception {
-        // 删除备选节点
-        zkClient.delete().forPath(STANDBY_PATH + "/" + masterID);
-        
-        // 创建活跃节点
-        String activePath = ACTIVE_PATH + "/" + masterID;
-        zkClient.create()
-                .withMode(CreateMode.EPHEMERAL)
-                .forPath(activePath);
-        System.out.println("升级为活跃主节点: " + activePath);
-    }
-
-    private void demoteToStandby() {
-        try {
-            // 删除活跃节点
-            zkClient.delete().forPath(ACTIVE_PATH + "/" + masterID);
-            
-            // 重新注册为备选节点
-            registerAsStandby();
-            System.out.println("降级为备选节点完成");
-        } catch (Exception e) {
-            System.err.println("节点状态转换失败: " + e.getMessage());
+            System.out.println("创建ZK路径: " + path);
         }
     }
 
     private void initializeComponents(CuratorFramework client) throws Exception {
         regionWatcher = new RegionWatcher(client);
-        metaManager = new MetaManager(regionWatcher);
         zkSyncManager = new ZKSyncManager(client.getZookeeperClient().getZooKeeper());
+        metaManager = new MetaManager(regionWatcher);
         dispatcher = new MasterDispatcher(metaManager, regionWatcher);
     }
 
@@ -163,39 +144,104 @@ public class MasterElection {
         System.out.println("MasterDispatcher 启动成功");
     }
 
-    private void waitForInterruption() throws InterruptedException {
-        while (isRunning.get()) {
-            Thread.sleep(1000);
-            if (!regionWatcher.isRunning() || masterServer == null) {
-                System.err.println("关键组件已停止，准备退出主节点");
-                isRunning.set(false);
+    private boolean checkComponentsHealth() {
+        return regionWatcher.isRunning() && masterServer != null && dispatcher != null;
+    }
+
+    private void registerAsStandby() {
+        try {
+            String standbyPath = STANDBY_PATH + "/" + masterID;
+            masterInfo.setStatus("standby");
+            byte[] data = objectMapper.writeValueAsBytes(masterInfo);
+            
+            zkClient.create()
+                    .withMode(CreateMode.EPHEMERAL)
+                    .forPath(standbyPath, data);
+            System.out.println("注册为备选节点: " + standbyPath);
+            // 节点信息打印
+            System.out.println("注册为备选节点成功！节点信息：");
+            System.out.println("├── 路径: " + standbyPath);
+            System.out.println("├── ID: " + masterInfo.getMasterID());
+            System.out.println("├── 地址: " + masterInfo.getHost());
+            System.out.println("├── 端口: " + masterInfo.getPort());
+            System.out.println("├── 状态: " + masterInfo.getStatus());
+            System.out.println("└── 创建时间: " + new Date(masterInfo.getCreateTime()));
+
+        } catch (Exception e) {
+            throw new RuntimeException("注册备选节点失败", e);
+        }
+    }
+
+    private void promoteToActive() throws Exception {
+        try {
+            // 删除备选节点
+            String standbyPath = STANDBY_PATH + "/" + masterID;
+            if (zkClient.checkExists().forPath(standbyPath) != null) {
+                zkClient.delete().forPath(standbyPath);
             }
+            
+            // 创建活跃节点
+            String activePath = ACTIVE_PATH + "/" + masterID;
+            masterInfo.setStatus("active");
+            masterInfo.setCreateTime(System.currentTimeMillis());
+            byte[] data = objectMapper.writeValueAsBytes(masterInfo);
+            
+            zkClient.create()
+                    .withMode(CreateMode.EPHEMERAL)
+                    .forPath(activePath, data);
+            System.out.println("升级为活跃主节点: " + activePath);
+            // 添加节点信息打印
+            System.out.println("升级为活跃主节点成功！节点信息：");
+            System.out.println("├── 路径: " + activePath);
+            System.out.println("├── ID: " + masterInfo.getMasterID());
+            System.out.println("├── 地址: " + masterInfo.getHost());
+            System.out.println("├── 端口: " + masterInfo.getPort());
+            System.out.println("├── 状态: " + masterInfo.getStatus());
+            System.out.println("└── 创建时间: " + new Date(masterInfo.getCreateTime()));
+        
+        } catch (Exception e) {
+            System.err.println("升级为活跃节点失败: " + e.getMessage());
+            throw e;
         }
     }
 
     private void cleanup() {
+        System.out.println("开始清理资源...");
         try {
-            System.out.println("开始清理资源...");
-            
             if (dispatcher != null) {
                 dispatcher.stop();
-                System.out.println("MasterDispatcher已停止");
             }
-
             if (masterServer != null) {
                 masterServer.stop();
-                System.out.println("MasterServer已停止");
             }
-
             if (regionWatcher != null) {
                 regionWatcher.stop();
-                System.out.println("RegionWatcher已停止");
             }
+            
+            // 降级为备选节点
+            demoteToStandby();
+            
         } catch (Exception e) {
             System.err.println("清理资源时发生错误: " + e.getMessage());
         } finally {
-            masterLatch.countDown();
-            System.out.println("主节点控制权释放！masterID: " + masterID);
+            if (masterLatch != null) {
+                masterLatch.countDown();
+            }
+            System.out.println("资源清理完成");
+        }
+    }
+
+    private void demoteToStandby() {
+        try {
+            String activePath = ACTIVE_PATH + "/" + masterID;
+            if (zkClient.checkExists().forPath(activePath) != null) {
+                zkClient.delete().forPath(activePath);
+            }
+            masterInfo.setStatus("standby");
+            masterInfo.setCreateTime(System.currentTimeMillis());
+            registerAsStandby();
+        } catch (Exception e) {
+            System.err.println("节点状态转换失败: " + e.getMessage());
         }
     }
 
@@ -209,13 +255,32 @@ public class MasterElection {
         isRunning.set(false);
         if (masterLatch != null) {
             try {
-                masterLatch.await();  // 等待资源清理完成
+                masterLatch.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.err.println("等待资源清理时被中断");
             }
         }
         this.leaderSelector.close();
         System.out.println("主节点已关闭！masterID: " + masterID);
+    }
+
+    public MasterInfo getCurrentMasterInfo() {
+        return masterInfo;
+    }
+
+    public MasterInfo getActiveMasterInfo() throws Exception {
+        try {
+            List<String> activeNodes = zkClient.getChildren().forPath(ACTIVE_PATH);
+            if (activeNodes.isEmpty()) {
+                return null;
+            }
+            
+            String activePath = ACTIVE_PATH + "/" + activeNodes.get(0);
+            byte[] data = zkClient.getData().forPath(activePath);
+            return objectMapper.readValue(data, MasterInfo.class);
+        } catch (Exception e) {
+            System.err.println("获取活跃主节点信息失败: " + e.getMessage());
+            throw e;
+        }
     }
 }
