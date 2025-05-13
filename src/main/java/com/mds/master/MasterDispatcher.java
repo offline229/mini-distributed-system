@@ -76,6 +76,10 @@ public class MasterDispatcher {
             // 选择负载最低的副本
             HostPortStatus optimalHost = findOptimalHost(targetRegion);
             
+            // 打印选中的 host 和 port
+        System.out.println("[MasterDispatcher] DML 请求选中的 RegionServer: regionId=" + targetRegion.getRegionserverID() +
+                           ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
+
             response.put("type", RESPONSE_TYPE_DML_REDIRECT);
             response.put("regionId", targetRegion.getRegionserverID());
             // response.put("replicaKey", targetRegion.getReplicaKey());
@@ -150,6 +154,11 @@ public class MasterDispatcher {
         // 找到负载最小的副本
         HostPortStatus optimalHost = findOptimalHost(optimalRegion);
 
+        // 打印选中的 host 和 port
+        System.out.println("[MasterDispatcher] DDL 请求选中的 RegionServer: regionId=" + optimalRegion.getRegionserverID() +
+                           ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
+
+                           
         response.put("type", RESPONSE_TYPE_DDL_RESULT);
         response.put("regionId", optimalRegion.getRegionserverID());
         response.put("host", optimalHost.getHost());

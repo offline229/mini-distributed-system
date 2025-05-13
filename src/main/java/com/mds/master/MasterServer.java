@@ -211,24 +211,33 @@ public class MasterServer {
             Map<String, Object> dispatchResult = masterDispatcher.dispatch(sql);
             String responseType = (String) dispatchResult.get("type");
 
+            Map<String, Object> response = new HashMap<>();
+
             if (MasterDispatcher.RESPONSE_TYPE_DML_REDIRECT.equals(responseType)) {
                 // DML 请求，返回目标 RegionServer
-                Map<String, Object> response = new HashMap<>();
                 response.put("status", "ok");
                 response.put("type", "DML_REDIRECT");
                 response.put("regionId", dispatchResult.get("regionId"));
                 response.put("host", dispatchResult.get("host"));
                 response.put("port", dispatchResult.get("port"));
+                 
+                // 打印发送给客户端的响应
+                System.out.println("发送给客户端的响应: " + response);
+
                 sendJsonResponse(out, response);
 
             } else if (MasterDispatcher.RESPONSE_TYPE_DDL_RESULT.equals(responseType)) {
-                // DDL 请求，返回所有 RegionServer
-                Map<String, Object> response = new HashMap<>();
+                // DDL 请求，返回目标 RegionServer
                 response.put("status", "ok");
                 response.put("type", "DDL_RESULT");
-                response.put("regions", dispatchResult.get("regions"));
-                sendJsonResponse(out, response);
+                response.put("regionId", dispatchResult.get("regionId"));
+                response.put("host", dispatchResult.get("host"));
+                response.put("port", dispatchResult.get("port"));
+                
+                // 打印发送给客户端的响应
+                System.out.println("发送给客户端的响应: " + response);
 
+                sendJsonResponse(out, response);
             } else if (MasterDispatcher.RESPONSE_TYPE_ERROR.equals(responseType)) {
                 // 错误处理
                 sendErrorResponse(out, (String) dispatchResult.get("message"), null);
