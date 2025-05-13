@@ -12,13 +12,13 @@ public class RegionServerInfo {
     public RegionServerInfo() {
     }
 
-    public RegionServerInfo(String regionserverID, List<HostPortStatus> hostsPortsStatusList, String replicaKey, long createTime) {
+    public RegionServerInfo(String regionserverID, List<HostPortStatus> hostsPortsStatusList, String replicaKey,
+            long createTime) {
         this.regionserverID = regionserverID;
         this.hostsPortsStatusList = hostsPortsStatusList;
         this.replicaKey = replicaKey;
         this.createTime = createTime;
     }
-
 
     public String getRegionserverID() {
         return regionserverID;

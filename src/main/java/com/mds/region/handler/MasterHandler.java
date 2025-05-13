@@ -1,9 +1,11 @@
 package com.mds.region.handler;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -17,7 +19,7 @@ import org.json.JSONObject;
 public class MasterHandler {
     private Socket masterSocket;
     private String masterHost = "localhost";
-    private int masterPort = 9000;
+    private int masterPort = 8000;
     private volatile boolean isRunning;
     private boolean testMode = false; // 添加测试模式标志
     private ExecutorService threadPool;
@@ -87,54 +89,81 @@ public class MasterHandler {
     }
 
     public String registerRegionServer(String host, int port, String replicaKey) throws IOException {
-        if (zooKeeper == null) {
-            throw new IllegalStateException("请先调用 init() 方法初始化 ZooKeeper 客户端");
-        }
         try {
-            // 1. 从ZK获取当前active master信息
-            byte[] masterData = zooKeeper.getData("/mds/master/active", false, null);
-            if (masterData != null && masterData.length > 0) {
-                // 使用JSONObject正确解析
-                JSONObject masterInfo = new JSONObject(new String(masterData));
-                masterHost = masterInfo.getString("host");
-                masterPort = masterInfo.getInt("port");
-                System.out.println("从ZK获取到Master信息: " + masterHost + ":" + masterPort);
-            } else {
+            // 1. 从ZK获取活跃master节点列表
+            List<String> activeNodes = zooKeeper.getChildren("/mds/master/active", false);
+            if (activeNodes == null || activeNodes.isEmpty()) {
                 System.out.println("ZK中未找到active master，使用默认测试配置");
-                setTestMode(true); // 设置测试模式
+                setTestMode(true);
                 return "RegionServerTest-1";
             }
 
-            // 2. 尝试连接Master
+            // 2. 获取活跃master节点数据
+            String activeMasterPath = "/mds/master/active/" + activeNodes.get(0);
+            byte[] data = zooKeeper.getData(activeMasterPath, false, null);
+
+            if (data == null) {
+                System.out.println("Active master节点数据为空，使用测试配置");
+                setTestMode(true);
+                return "RegionServerTest-1";
+            }
+
+            // 3. 解析master信息
+            JSONObject masterInfo = new JSONObject(new String(data));
+            masterHost = masterInfo.getString("host");
+            masterPort = masterInfo.getInt("port");
+            System.out.println("从ZK获取到Master信息: " + masterHost + ":" + masterPort);
+
+            // 4. 连接到Master
             try {
                 masterSocket = new Socket(masterHost, masterPort);
                 System.out.println("成功连接到Master: " + masterHost + ":" + masterPort);
+
+                // 5. 构建注册请求
+                JSONObject registerRequest = new JSONObject();
+                registerRequest.put("type", "REGISTER");
+                registerRequest.put("host", host);
+                registerRequest.put("port", port);
+                registerRequest.put("replicaKey", replicaKey);
+
+                // 6. 发送注册请求
+                sendRequest(registerRequest);
+
+                // 7. TODO: 处理响应...
+                return "RegionServer-" + replicaKey;
+
             } catch (IOException e) {
-                System.out.println("连接Master失败，进入测试模式");
-                setTestMode(true); // 设置测试模式
+                System.out.println("连接Master失败，进入测试模式: " + e.getMessage());
+                setTestMode(true);
                 return "RegionServerTest-1";
             }
-            // 3. 发送注册请求
-            Map<String, Object> registerRequest = new HashMap<>();
-            registerRequest.put("type", "REGISTER");
-            registerRequest.put("host", host);
-            registerRequest.put("port", port);
-            registerRequest.put("replicaKey", replicaKey); // 添加副本标识key
-
-            // 4. 发送请求并等待响应
-            sendRequest(registerRequest);
-
-            // 5. 如果连接成功但未收到响应，仍使用测试ID
-            System.out.println("未收到Master响应，使用测试ID：RegionServerTest-1");
-            return "RegionServerTest-1";
 
         } catch (KeeperException | InterruptedException e) {
-            System.out.println("ZK操作失败，进入测试模式：" + e.getMessage());
-            setTestMode(true); // 设置测试模式
+            System.out.println("ZK操作失败，进入测试模式: " + e.getMessage());
+            setTestMode(true);
             return "RegionServerTest-1";
-        } catch (IOException e) {
-            System.out.println("连接Master失败，使用测试ID：" + e.getMessage());
-            return "RegionServerTest-1";
+        }
+    }
+
+    private void sendRequest(JSONObject request) throws IOException {
+        if (testMode) {
+            System.out.println("[测试模式] 模拟发送请求到Master：" + request.toString(2));
+            return;
+        }
+
+        try {
+            if (masterSocket != null && masterSocket.isConnected()) {
+                PrintWriter out = new PrintWriter(masterSocket.getOutputStream(), true);
+                out.println(request.toString());
+                System.out.println("发送请求到Master：" + request.toString(2));
+            } else {
+                throw new IOException("未连接到Master");
+            }
+        } catch (Exception e) {
+            if (masterSocket != null) {
+                masterSocket.close();
+            }
+            throw new IOException("发送请求失败：" + e.getMessage());
         }
     }
 
