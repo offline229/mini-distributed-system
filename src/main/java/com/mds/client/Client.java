@@ -168,7 +168,7 @@ public class Client {
     }
 
     /*
-     * CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), age INT)
+     * CREATE TABLE users (id INT PRIMARY KEY, nameVARCHAR(50), age INT)
      * 
      * INSERT INTO users (id, name, age) VALUES (1, "测试用户1", 25)
      * 

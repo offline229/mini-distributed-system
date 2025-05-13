@@ -28,6 +28,8 @@ public class MasterServer {
     public MasterServer(int port, MetaManager metaManager, ZKSyncManager zkSyncManager, RegionWatcher regionWatcher, MasterDispatcher masterDispatcher) {
         this.port = port;
         this.metaManager = metaManager;
+        // 初始化 MetaManager
+        this.metaManager.init();
         this.zkSyncManager = zkSyncManager;
         this.regionWatcher = regionWatcher;
         this.masterDispatcher = masterDispatcher;
@@ -108,58 +110,57 @@ public class MasterServer {
     }
 
     private void handleRegionRegistration(Map<String, Object> request, PrintWriter out) {
-        try {
-            String host = (String) request.get("host");
-            int port = (int) request.get("port");
-            String replicaKey = (String) request.get("replicaKey");
+    try {
+        String host = (String) request.get("host");
+        int port = (int) request.get("port");
+        String replicaKey = (String) request.get("replicaKey");
 
-            RegionServerInfo existingRegionServer = regionWatcher.findRegionServerByReplicaKey(replicaKey);
+        System.out.println("[MasterServer] 收到 RegionServer 注册请求: host=" + host + ", port=" + port + ", replicaKey=" + replicaKey);
 
-            String regionserverId;
-            if (existingRegionServer != null) {
-                // 检查是否已存在相同的 host:port
-                boolean hostPortExists = existingRegionServer.getHostsPortsStatusList().stream()
-                    .anyMatch(hp -> hp.getHost().equals(host) && hp.getPort() == port);
-                
-                if (!hostPortExists) {
-                    // 只有当 host:port 组合不存在时才添加
-                    existingRegionServer.getHostsPortsStatusList().add(
-                        new HostPortStatus(host, port, "active", 0, System.currentTimeMillis())
-                    );
-                    zkSyncManager.updateRegionInfo(existingRegionServer);
-                    metaManager.updateRegionInfo(existingRegionServer);
-                }
-                regionserverId = existingRegionServer.getRegionserverID();
-            } else {
-                // 创建新的 RegionServerInfo
-                regionserverId = UUID.randomUUID().toString();
-                List<HostPortStatus> hostPorts = new ArrayList<>();
-                hostPorts.add(new HostPortStatus(host, port, "active", 0, System.currentTimeMillis()));
-                
-                RegionServerInfo newRegionServer = new RegionServerInfo(
-                    regionserverId,
-                    hostPorts,
-                    replicaKey,
-                    System.currentTimeMillis()
+        RegionServerInfo existingRegionServer = regionWatcher.findRegionServerByReplicaKey(replicaKey);
+
+        String regionserverId;
+        if (existingRegionServer != null) {
+            System.out.println("[MasterServer] 已存在的 RegionServer: " + existingRegionServer.getRegionserverID());
+            // 检查是否已存在相同的 host:port
+            boolean hostPortExists = existingRegionServer.getHostsPortsStatusList().stream()
+                .anyMatch(hp -> hp.getHost().equals(host) && hp.getPort() == port);
+
+            if (!hostPortExists) {
+                existingRegionServer.getHostsPortsStatusList().add(
+                    new HostPortStatus(host, port, "active", 0, System.currentTimeMillis())
                 );
-                
-                zkSyncManager.registerRegion(newRegionServer);
-                metaManager.saveRegionInfo(newRegionServer);
+                zkSyncManager.updateRegionInfo(existingRegionServer);
+                metaManager.updateRegionInfo(existingRegionServer);
             }
+            regionserverId = existingRegionServer.getRegionserverID();
+        } else {
+            regionserverId = UUID.randomUUID().toString();
+            List<HostPortStatus> hostPorts = new ArrayList<>();
+            hostPorts.add(new HostPortStatus(host, port, "active", 0, System.currentTimeMillis()));
 
+            RegionServerInfo newRegionServer = new RegionServerInfo(
+                regionserverId,
+                hostPorts,
+                replicaKey,
+                System.currentTimeMillis()
+            );
 
-            // 返回响应
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "ok");
-            response.put("regionserverId", regionserverId);
-            sendJsonResponse(out, response);
-
-            System.out.println("RegionServer 注册成功: " + regionserverId);
-        } catch (Exception e) {
-            System.err.println("处理 Region 注册失败: " + e.getMessage());
-            sendErrorResponse(out, "注册失败: " + e.getMessage(), null);
+            zkSyncManager.registerRegion(newRegionServer);
+            metaManager.saveRegionInfo(newRegionServer);
         }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "ok");
+        response.put("regionserverId", regionserverId);
+        sendJsonResponse(out, response);
+
+        System.out.println("[MasterServer] RegionServer 注册成功: " + regionserverId);
+    } catch (Exception e) {
+        System.err.println("[MasterServer] 处理 Region 注册失败: " + e.getMessage());
+        sendErrorResponse(out, "注册失败: " + e.getMessage(), null);
     }
+}
 
     public void handleHeartbeat(Map<String, Object> request, PrintWriter out) {
         try {

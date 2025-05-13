@@ -17,6 +17,12 @@ public class MasterDispatcher {
     private final MetaManager metaManager;
     private volatile boolean isRunning = false;
 
+    // Constructor accepting RegionWatcher
+    public MasterDispatcher(RegionWatcher regionWatcher) {
+        this.regionWatcher = regionWatcher;
+        this.metaManager = new MetaManager(regionWatcher); 
+    }
+    
     public MasterDispatcher(MetaManager metaManager, RegionWatcher regionWatcher) {
         this.metaManager = metaManager;
         this.regionWatcher = regionWatcher;
@@ -83,36 +89,78 @@ public class MasterDispatcher {
         return response;
     }
 
-    private Map<String, Object> handleDDLRequest(String sql) {
-        Map<String, Object> response = new HashMap<>();
-        try {
-            List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
-            Set<String> processedReplicaKeys = new HashSet<>();
-            List<Map<String, Object>> regionDetails = new ArrayList<>();
+    // private Map<String, Object> handleDDLRequest(String sql) {
+    //     Map<String, Object> response = new HashMap<>();
+    //     try {
+    //         List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
+    //         Set<String> processedReplicaKeys = new HashSet<>();
+    //         List<Map<String, Object>> regionDetails = new ArrayList<>();
 
-            for (RegionServerInfo region : allRegions) {
-                // 对于DDL，每个副本组只选择一个节点
-                if (processedReplicaKeys.add(region.getReplicaKey())) {
-                    HostPortStatus optimalHost = findOptimalHost(region);
-                    Map<String, Object> regionInfo = new HashMap<>();
-                    regionInfo.put("regionId", region.getRegionserverID());
-                    regionInfo.put("replicaKey", region.getReplicaKey());
-                    regionInfo.put("host", optimalHost.getHost());
-                    regionInfo.put("port", optimalHost.getPort());
-                    regionDetails.add(regionInfo);
-                }
-            }
+    //         for (RegionServerInfo region : allRegions) {
+    //             // 对于DDL，每个副本组只选择一个节点
+    //             if (processedReplicaKeys.add(region.getReplicaKey())) {
+    //                 HostPortStatus optimalHost = findOptimalHost(region);
+    //                 Map<String, Object> regionInfo = new HashMap<>();
+    //                 regionInfo.put("regionId", region.getRegionserverID());
+    //                 regionInfo.put("replicaKey", region.getReplicaKey());
+    //                 regionInfo.put("host", optimalHost.getHost());
+    //                 regionInfo.put("port", optimalHost.getPort());
+    //                 regionDetails.add(regionInfo);
+    //             }
+    //         }
 
-            response.put("type", RESPONSE_TYPE_DDL_RESULT);
-            response.put("regions", regionDetails);
+    //         response.put("type", RESPONSE_TYPE_DDL_RESULT);
+    //         response.put("regions", regionDetails);
             
-        } catch (Exception e) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "DDL dispatch failed: " + e.getMessage());
-        }
-        return response;
-    }
+    //     } catch (Exception e) {
+    //         response.put("type", RESPONSE_TYPE_ERROR);
+    //         response.put("message", "DDL dispatch failed: " + e.getMessage());
+    //     }
+    //     return response;
+    // }
 
+    private Map<String, Object> handleDDLRequest(String sql) {
+    Map<String, Object> response = new HashMap<>();
+    try {
+        // 获取所有在线的 RegionServer
+        List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
+        System.out.println("[MasterDispatcher] 当前在线 RegionServer 数量: " + allRegions.size());
+
+        if (allRegions.isEmpty()) {
+            response.put("type", RESPONSE_TYPE_ERROR);
+            response.put("message", "No available RegionServer");
+            return response;
+        }
+
+        // 找到负载最小的 RegionServer
+        RegionServerInfo optimalRegion = allRegions.stream()
+            .min(Comparator.comparingInt(region -> 
+                region.getHostsPortsStatusList().stream()
+                    .mapToInt(HostPortStatus::getConnections)
+                    .min()
+                    .orElse(Integer.MAX_VALUE)))
+            .orElse(null);
+
+        if (optimalRegion == null) {
+            response.put("type", RESPONSE_TYPE_ERROR);
+            response.put("message", "No available RegionServer");
+            return response;
+        }
+
+        // 找到负载最小的副本
+        HostPortStatus optimalHost = findOptimalHost(optimalRegion);
+
+        response.put("type", RESPONSE_TYPE_DDL_RESULT);
+        response.put("regionId", optimalRegion.getRegionserverID());
+        response.put("host", optimalHost.getHost());
+        response.put("port", optimalHost.getPort());
+    } catch (Exception e) {
+        response.put("type", RESPONSE_TYPE_ERROR);
+        response.put("message", "DDL dispatch failed: " + e.getMessage());
+    }
+    return response;
+}
+    
     private RegionServerInfo findOptimalRegionServer() {
         Map<String, RegionServerInfo> onlineRegions = regionWatcher.getOnlineRegions();
         if (onlineRegions.isEmpty()) return null;

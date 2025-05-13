@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RegionWatcher {
-    private static final String BASE_PATH = "/regions";
+    private static final String BASE_PATH = "/mds/regions-meta";
     private static final long HEARTBEAT_TIMEOUT = 30_000; // 30秒超时
     private final CuratorFramework client;
     private final Map<String, RegionServerInfo> onlineRegions = new ConcurrentHashMap<>();
