@@ -18,10 +18,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Date;
 
 public class MasterElection {
-    private static final String MASTER_BASE_PATH = "/master";          
-    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";    
-    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";  
-    private static final int MASTER_PORT = 8000;      
+    private static final String BASE_PATH = "/mds";
+    private static final String MASTER_BASE_PATH = BASE_PATH + "/master";
+    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";
+    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";
+    private static final int MASTER_PORT = 8000;
 
     private final CuratorFramework zkClient;
     private final LeaderSelector leaderSelector;
@@ -45,54 +46,54 @@ public class MasterElection {
         try {
             // 初始化MasterInfo
             this.masterInfo = new MasterInfo(
-                masterID,
-                InetAddress.getLocalHost().getHostAddress(),
-                MASTER_PORT,
-                "standby",
-                System.currentTimeMillis()
-            );
+                    masterID,
+                    // 选择localhost作为host
+                    "localhost",
+                    // InetAddress.getLocalHost().getHostAddress(),
+                    MASTER_PORT,
+                    "standby",
+                    System.currentTimeMillis());
 
             // 初始化ZK路径
             initializePaths();
-            
+
             // 初始化LeaderSelector
             this.leaderSelector = new LeaderSelector(
-                zkClient,
-                MASTER_BASE_PATH,
-                new LeaderSelectorListenerAdapter() {
-                    @Override
-                    public void takeLeadership(CuratorFramework client) throws Exception {
-                        System.out.println("主节点选举成功！当前主节点 masterID: " + masterID);
-                        masterLatch = new CountDownLatch(1);
+                    zkClient,
+                    MASTER_BASE_PATH,
+                    new LeaderSelectorListenerAdapter() {
+                        @Override
+                        public void takeLeadership(CuratorFramework client) throws Exception {
+                            System.out.println("主节点选举成功！当前主节点 masterID: " + masterID);
+                            masterLatch = new CountDownLatch(1);
 
-                        try {
-                            // 升级为活跃节点
-                            promoteToActive();
-                            // 初始化组件
-                            initializeComponents(client);
-                            // 启动服务
-                            startServices();
-                            
-                            // 保持运行直到被中断
-                            while (isRunning.get() && !Thread.currentThread().isInterrupted()) {
-                                Thread.sleep(1000);
-                                // 检查关键组件状态
-                                if (!checkComponentsHealth()) {
-                                    break;
+                            try {
+                                // 升级为活跃节点
+                                promoteToActive();
+                                // 初始化组件
+                                initializeComponents(client);
+                                // 启动服务
+                                startServices();
+
+                                // 保持运行直到被中断
+                                while (isRunning.get() && !Thread.currentThread().isInterrupted()) {
+                                    Thread.sleep(1000);
+                                    // 检查关键组件状态
+                                    if (!checkComponentsHealth()) {
+                                        break;
+                                    }
                                 }
+                            } finally {
+                                cleanup();
                             }
-                        } finally {
-                            cleanup();
                         }
-                    }
-                }
-            );
-            
+                    });
+
             this.leaderSelector.autoRequeue(); // 自动重新参与选举
-            
+
             // 注册为备选节点
             registerAsStandby();
-            
+
         } catch (Exception e) {
             throw new RuntimeException("初始化MasterElection失败", e);
         }
@@ -153,7 +154,7 @@ public class MasterElection {
             String standbyPath = STANDBY_PATH + "/" + masterID;
             masterInfo.setStatus("standby");
             byte[] data = objectMapper.writeValueAsBytes(masterInfo);
-            
+
             zkClient.create()
                     .withMode(CreateMode.EPHEMERAL)
                     .forPath(standbyPath, data);
@@ -179,13 +180,13 @@ public class MasterElection {
             if (zkClient.checkExists().forPath(standbyPath) != null) {
                 zkClient.delete().forPath(standbyPath);
             }
-            
+
             // 创建活跃节点
             String activePath = ACTIVE_PATH + "/" + masterID;
             masterInfo.setStatus("active");
             masterInfo.setCreateTime(System.currentTimeMillis());
             byte[] data = objectMapper.writeValueAsBytes(masterInfo);
-            
+
             zkClient.create()
                     .withMode(CreateMode.EPHEMERAL)
                     .forPath(activePath, data);
@@ -198,7 +199,7 @@ public class MasterElection {
             System.out.println("├── 端口: " + masterInfo.getPort());
             System.out.println("├── 状态: " + masterInfo.getStatus());
             System.out.println("└── 创建时间: " + new Date(masterInfo.getCreateTime()));
-        
+
         } catch (Exception e) {
             System.err.println("升级为活跃节点失败: " + e.getMessage());
             throw e;
@@ -217,10 +218,10 @@ public class MasterElection {
             if (regionWatcher != null) {
                 regionWatcher.stop();
             }
-            
+
             // 降级为备选节点
             demoteToStandby();
-            
+
         } catch (Exception e) {
             System.err.println("清理资源时发生错误: " + e.getMessage());
         } finally {
@@ -274,7 +275,7 @@ public class MasterElection {
             if (activeNodes.isEmpty()) {
                 return null;
             }
-            
+
             String activePath = ACTIVE_PATH + "/" + activeNodes.get(0);
             byte[] data = zkClient.getData().forPath(activePath);
             return objectMapper.readValue(data, MasterInfo.class);
