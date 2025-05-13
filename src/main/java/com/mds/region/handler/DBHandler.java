@@ -12,15 +12,40 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 
 public class DBHandler {
     private static final Logger logger = LoggerFactory.getLogger(DBHandler.class);
     private static final int QUERY_TIMEOUT = 30; // 查询超时时间（秒）
     private static final int MAX_ROWS = 1000; // 最大返回行数
+
+    // 执行结果类
+    public static class ExecuteResult {
+        private final Object data;           // 执行结果数据
+        private final String operation;      // 操作类型
+        private final String tableName;      // 表名
+        private final boolean isDataChanged; // 是否改变了数据
+        private final String message;        // 附加信息
+
+        public ExecuteResult(Object data, String operation, String tableName, boolean isDataChanged, String message) {
+            this.data = data;
+            this.operation = operation;
+            this.tableName = tableName;
+            this.isDataChanged = isDataChanged;
+            this.message = message;
+        }
+
+        public Object getData() { return data; }
+        public String getOperation() { return operation; }
+        public String getTableName() { return tableName; }
+        public boolean isDataChanged() { return isDataChanged; }
+        public String getMessage() { return message; }
+
+        @Override
+        public String toString() {
+            return String.format("ExecuteResult{operation='%s', table='%s', changed=%b, message='%s'}",
+                    operation, tableName, isDataChanged, message);
+        }
+    }
 
     public void init() throws SQLException {
         try {
@@ -32,7 +57,7 @@ public class DBHandler {
         }
     }
 
-    public Object execute(String sql, Object[] params) throws SQLException {
+    public ExecuteResult execute(String sql, Object[] params) throws SQLException {
         Connection conn = null;
         Statement stmt = null;
         PreparedStatement pstmt = null;
@@ -42,13 +67,15 @@ public class DBHandler {
             conn = MySQLUtil.getConnection();
             String upperSql = sql.trim().toUpperCase();
             String operation = upperSql.split("\\s+")[0];
-            logger.debug("执行SQL操作: {}, 参数: {}", operation, params);
+            String tableName = extractTableName(sql);
+            logger.debug("执行SQL操作: {}, 表: {}, 参数: {}", operation, tableName, params);
 
             // DDL操作
             if (isDDL(operation)) {
                 stmt = conn.createStatement();
                 stmt.execute(sql);
-                return "SQL执行成功";
+                return new ExecuteResult("SQL执行成功", operation, tableName, true, 
+                    String.format("表 %s 的DDL操作执行成功", tableName));
             }
 
             // DML和DQL操作
@@ -61,9 +88,11 @@ public class DBHandler {
 
             if (operation.equals("SELECT")) {
                 rs = pstmt.executeQuery();
-                return resultSetToJson(rs);
+                return new ExecuteResult(resultSetToJson(rs), operation, tableName, false, "查询成功");
             } else {
-                return pstmt.executeUpdate();
+                int affectedRows = pstmt.executeUpdate();
+                return new ExecuteResult(affectedRows, operation, tableName, true,
+                    String.format("影响行数: %d", affectedRows));
             }
 
         } catch (SQLException e) {
@@ -72,6 +101,22 @@ public class DBHandler {
         } finally {
             closeResources(rs, stmt, pstmt, conn);
         }
+    }
+
+    private String extractTableName(String sql) {
+        sql = sql.trim().toUpperCase();
+        if (sql.startsWith("CREATE TABLE")) {
+            return sql.split("\\s+")[2].toLowerCase();
+        } else if (sql.startsWith("SELECT")) {
+            return sql.split("FROM\\s+")[1].split("\\s+")[0].toLowerCase();
+        } else if (sql.startsWith("INSERT")) {
+            return sql.split("INTO\\s+")[1].split("\\s+")[0].toLowerCase();
+        } else if (sql.startsWith("UPDATE")) {
+            return sql.split("\\s+")[1].toLowerCase();
+        } else if (sql.startsWith("DELETE")) {
+            return sql.split("FROM\\s+")[1].split("\\s+")[0].toLowerCase();
+        }
+        return null;
     }
 
     private boolean isDDL(String operation) {

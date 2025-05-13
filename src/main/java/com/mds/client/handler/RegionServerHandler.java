@@ -6,8 +6,8 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.Socket;
 
-public class RegionHandler {
-    private static final Logger logger = LoggerFactory.getLogger(RegionHandler.class);
+public class RegionServerHandler {
+    private static final Logger logger = LoggerFactory.getLogger(RegionServerHandler.class);
     private Socket regionSocket;
     private PrintWriter out;
     private BufferedReader in;
@@ -16,12 +16,12 @@ public class RegionHandler {
         regionSocket = new Socket(host, port);
         out = new PrintWriter(regionSocket.getOutputStream(), true);
         in = new BufferedReader(new InputStreamReader(regionSocket.getInputStream()));
-        logger.info("已连接到Region: {}:{}", host, port);
+        logger.info("已连接到RegionServer: {}:{}", host, port);
     }
 
     public Object sendRequest(JSONObject request) throws IOException {
         if (out == null || regionSocket == null || !regionSocket.isConnected()) {
-            throw new IOException("Region连接未初始化或已断开");
+            throw new IOException("RegionServer连接未初始化或已断开");
         }
 
         try {
@@ -29,7 +29,7 @@ public class RegionHandler {
             String response = in.readLine();
             return new JSONObject(response).get("data");
         } catch (IOException e) {
-            logger.error("发送请求到Region失败: {}", e.getMessage());
+            logger.error("发送请求到RegionServer失败: {}", e.getMessage());
             throw e;
         }
     }
@@ -42,9 +42,9 @@ public class RegionHandler {
                 in.close();
             if (regionSocket != null)
                 regionSocket.close();
-            logger.info("Region连接已关闭");
+            logger.info("RegionServer连接已关闭");
         } catch (IOException e) {
-            logger.error("关闭Region连接失败: {}", e.getMessage());
+            logger.error("关闭RegionServer连接失败: {}", e.getMessage());
         }
     }
 }

@@ -2,7 +2,7 @@ package com.mds.client.constant;
 
 public class MessageFormat {
     // 消息类型
-    public static final String TYPE_GET_REGION = "GET_REGION";
+    public static final String TYPE_GET_REGIONSERVER = "GET_REGIONSERVER";
     public static final String TYPE_SQL_EXEC = "SQL_EXEC";
 
     // SQL操作类型

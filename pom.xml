@@ -76,6 +76,7 @@
             <scope>test</scope>
         </dependency>
 
+
         <!-- Master 添加 -->
         <dependency>
             <groupId>org.apache.curator</groupId>
@@ -92,7 +93,6 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
-
 
     </dependencies>
 

@@ -17,15 +17,21 @@ public class ZookeeperHandler {
     private static final String REGION_SERVER_PATH = ZK_ROOT + "/region-server";
 
     private ZooKeeper zk;
+    private boolean initialized = false; // 新增
 
+    public boolean isInitialized() {
+        return initialized && zk != null;
+    }
     // 初始化ZooKeeper连接
     public void init() throws IOException {
+        if (isInitialized()) return;
         zk = new ZooKeeper(ZK_HOST, ZK_TIMEOUT, new Watcher() {
             @Override
             public void process(WatchedEvent event) {
                 System.out.println("ZooKeeper事件：" + event);
             }
         });
+        initialized = true;
         System.out.println("ZooKeeper连接成功！");
     }
 
@@ -83,6 +89,7 @@ public class ZookeeperHandler {
     public void close() throws InterruptedException {
         if (zk != null) {
             zk.close();
+            initialized = false; // 断开时重置
             System.out.println("ZooKeeper连接已关闭！");
         }
     }
