@@ -165,43 +165,26 @@ public class Client {
         Scanner scanner = new Scanner(System.in);
         Client client = new Client();
         boolean directMode = false;
-        String host = DEFAULT_MASTER_HOST;
-        int port = DEFAULT_MASTER_PORT;
 
         try {
-            // 1. 基础初始化
-            client.regionHandler = new RegionServerHandler(); // 添加这行
-
-            // 2. 获取连接信息
+            // 1. 获取连接模式
             System.out.println("=== 分布式数据库客户端 ===");
             System.out.print("是否禁用Master直接与RegionServer通信? (1:是, 0:否): ");
             String modeStr = scanner.nextLine().trim();
             directMode = "1".equals(modeStr);
 
             if (directMode) {
+                // 直接通信模式
                 System.out.println("\n=== 直接通信模式 ===");
-                host = "localhost";
-                port = 8001;
-                System.out.println("将直接连接 RegionServer: " + host + ":" + port);
+                client.regionHandler = new RegionServerHandler();
+                System.out.println("将直接连接 RegionServer: localhost:8001");
             } else {
-                System.out.print("请输入Master地址 (默认 localhost): ");
-                host = scanner.nextLine().trim();
-                if (host.isEmpty()) {
-                    host = DEFAULT_MASTER_HOST;
-                }
-
-                System.out.print("请输入Master端口 (默认 9000): ");
-                String portStr = scanner.nextLine().trim();
-                port = portStr.isEmpty() ? DEFAULT_MASTER_PORT : Integer.parseInt(portStr);
+                // 通过Master通信模式
+                System.out.println("\n=== Master通信模式 ===");
+                client.start(); // 这里会自动从ZK获取Master信息
             }
 
-            // 3. 启动客户端
-            if (!directMode) {
-                System.out.println("\n正在连接Master " + host + ":" + port + "...");
-                client.start();
-            }
-
-            // 4. 进入命令行循环
+            // 2. 进入命令行循环
             System.out.println("\n=== 输入SQL命令（输入'Quit'退出） ===");
             while (true) {
                 System.out.print("\nsql> ");
@@ -215,7 +198,7 @@ public class Client {
                     if (!input.isEmpty()) {
                         Object result;
                         if (directMode) {
-                            result = client.executeDirectly(input, null, host, port);
+                            result = client.executeDirectly(input, null, "localhost", 8001);
                         } else {
                             result = client.executeSql(input, null);
                         }

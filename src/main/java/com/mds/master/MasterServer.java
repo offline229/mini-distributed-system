@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mds.common.RegionServerInfo;
 import com.mds.common.RegionServerInfo.HostPortStatus;
 import com.mds.master.self.MetaManager;
-import com.mds.master.ZKSyncManager;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -13,9 +12,8 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * MasterServer 用于接收来自 Region 和 Client 的 socket 请求，如注册、心跳、SQL等。
- */
+// MasterServer 用于接收来自 Region 和 Client 的 socket 请求，如注册、心跳、SQL等。
+
 public class MasterServer {
     private final int port;
     private final MetaManager metaManager;
@@ -23,7 +21,7 @@ public class MasterServer {
     private final RegionWatcher regionWatcher;
     private final MasterDispatcher masterDispatcher;
     private ServerSocket serverSocket;
-    private final ExecutorService threadPool;
+    private final ExecutorService threadPool;   //线程池
 
     private final ObjectMapper mapper = new ObjectMapper(); // 用于序列化/反序列化 JSON
 
@@ -38,7 +36,7 @@ public class MasterServer {
 
     public void start() {
         try {
-            serverSocket = new ServerSocket(port);
+            serverSocket = new ServerSocket(port);  //绑定端口
             System.out.println("MasterServer 启动监听端口 " + port);
 
             // 启动 RegionWatcher 来监控 ZK 中的 Region 节点
