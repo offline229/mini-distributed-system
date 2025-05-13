@@ -69,16 +69,18 @@ public class RegionServerInfo {
         private int port;
         private String status; // New field for the status of the server
         private int connections; // New field for the number of connections
+        private long lastHeartbeatTime; // Last heartbeat time
 
-        // 添加默认构造函数
+        // Default constructor
         public HostPortStatus() {
         }
-
-        public HostPortStatus(String host, int port, String status, int connections) {
+        
+        public HostPortStatus(String host, int port, String status, int connections, long lastHeartbeatTime) {
             this.host = host;
             this.port = port;
             this.status = status;
             this.connections = connections;
+            this.lastHeartbeatTime = lastHeartbeatTime;
         }
 
         public String getHost() {
@@ -113,10 +115,18 @@ public class RegionServerInfo {
             this.connections = connections;
         }
 
+        public long getLastHeartbeatTime() {
+            return lastHeartbeatTime;
+        }
+
+        public void setLastHeartbeatTime(long lastHeartbeatTime) {
+            this.lastHeartbeatTime = lastHeartbeatTime;
+        }
+
         @Override
         public String toString() {
-            return String.format("HostPortStatus{host=%s, port=%d, status=%s, connections=%d}",
-                    host, port, status, connections);
+            return String.format("HostPortStatus{host=%s, port=%d, status=%s, connections=%d, lastHeartbeatTime=%d}",
+                    host, port, status, connections, lastHeartbeatTime);
         }
     }
 }

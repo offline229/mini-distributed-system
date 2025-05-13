@@ -9,15 +9,20 @@ import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RegionWatcher {
     private static final String BASE_PATH = "/regions";
+    private static final long HEARTBEAT_TIMEOUT = 30_000; // 30秒超时
     private final CuratorFramework client;
     private final Map<String, RegionServerInfo> onlineRegions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private PathChildrenCache cache;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public RegionWatcher(CuratorFramework client) {
         this.client = client;
@@ -41,6 +46,9 @@ public class RegionWatcher {
             cache.getListenable().addListener(createCacheListener());
             cache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
 
+            // 启动心跳超时检查任务
+            scheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, HEARTBEAT_TIMEOUT, HEARTBEAT_TIMEOUT, TimeUnit.MILLISECONDS);
+
             System.out.println("[RegionWatcher] 已启动监听器，初始 Region 数量：" + onlineRegions.size());
         } catch (Exception e) {
             isRunning.set(false);
@@ -54,6 +62,7 @@ public class RegionWatcher {
         }
 
         try {
+            scheduler.shutdownNow(); // 停止定时任务
             if (cache != null) {
                 cache.close();
                 cache = null;
@@ -74,40 +83,38 @@ public class RegionWatcher {
     }
 
     public RegionServerInfo getRegionById(String regionserverId) {
-        if (!isRunning.get()) {
-            System.err.println("[RegionWatcher] 监听器未运行");
-            return null;
-        }
         return onlineRegions.get(regionserverId);
     }
 
     public RegionServerInfo findRegionServerByReplicaKey(String replicaKey) {
-        if (!isRunning.get() || replicaKey == null) {
-            return null;
-        }
         return onlineRegions.values().stream()
-                .filter(info -> replicaKey.equals(info.getReplicaKey()))
+                .filter(region -> replicaKey.equals(region.getReplicaKey()))
                 .findFirst()
                 .orElse(null);
     }
 
-    public RegionServerInfo findLeastLoadedRegionServer() {
-        if (!isRunning.get()) {
-            return null;
-        }
-        return onlineRegions.values().stream()
-                .min((r1, r2) -> {
-                    int load1 = calculateLoad(r1);
-                    int load2 = calculateLoad(r2);
-                    return Integer.compare(load1, load2);
-                })
-                .orElse(null);
-    }
+    public void checkHeartbeatTimeout() {
+        if (!isRunning.get()) return;
 
-    private int calculateLoad(RegionServerInfo region) {
-        return region.getHostsPortsStatusList().stream()
-                .mapToInt(RegionServerInfo.HostPortStatus::getConnections)
-                .sum();
+        long currentTime = System.currentTimeMillis();
+        onlineRegions.values().forEach(region -> {
+            region.getHostsPortsStatusList().removeIf(hp -> {
+                if (currentTime - hp.getLastHeartbeatTime() > HEARTBEAT_TIMEOUT) {
+                    System.out.println("[RegionWatcher] 检测到超时 HostPort，下线：" + hp.getHost() + ":" + hp.getPort());
+                    return true;
+                }
+                return false;
+            });
+        });
+
+        // 移除没有任何 HostPort 的 RegionServer
+        onlineRegions.entrySet().removeIf(entry -> {
+            if (entry.getValue().getHostsPortsStatusList().isEmpty()) {
+                System.out.println("[RegionWatcher] RegionServer 下线：" + entry.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 
     private PathChildrenCacheListener createCacheListener() {
@@ -146,9 +153,19 @@ public class RegionWatcher {
 
     private void handleChildUpdated(String path, byte[] data) {
         try {
-            RegionServerInfo info = objectMapper.readValue(data, RegionServerInfo.class);
-            onlineRegions.put(info.getRegionserverID(), info);
-            System.out.println("[RegionWatcher] 节点更新：" + info.getRegionserverID());
+            RegionServerInfo updatedInfo = objectMapper.readValue(data, RegionServerInfo.class);
+            RegionServerInfo existingInfo = onlineRegions.get(updatedInfo.getRegionserverID());
+            if (existingInfo != null) {
+                // 更新 HostPort 的心跳时间
+                updatedInfo.getHostsPortsStatusList().forEach(updatedHostPort -> {
+                    existingInfo.getHostsPortsStatusList().stream()
+                        .filter(hp -> hp.getHost().equals(updatedHostPort.getHost()) && hp.getPort() == updatedHostPort.getPort())
+                        .forEach(hp -> hp.setLastHeartbeatTime(System.currentTimeMillis()));
+                });
+            } else {
+                onlineRegions.put(updatedInfo.getRegionserverID(), updatedInfo);
+            }
+            System.out.println("[RegionWatcher] 节点更新：" + updatedInfo.getRegionserverID());
         } catch (Exception e) {
             System.err.println("[RegionWatcher] 解析 CHILD_UPDATED 事件失败：" + e.getMessage());
         }
@@ -184,5 +201,12 @@ public class RegionWatcher {
 
     private String extractRegionServerId(String path) {
         return path.substring(path.lastIndexOf("/") + 1);
+    }
+
+
+    //for testing
+    // Add this method to the RegionWatcher class
+    public org.apache.curator.framework.recipes.cache.PathChildrenCache createPathChildrenCache(String path, boolean cacheData) {
+        return new org.apache.curator.framework.recipes.cache.PathChildrenCache(client, path, cacheData);
     }
 }

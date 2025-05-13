@@ -124,7 +124,7 @@ public class MasterServer {
                 if (!hostPortExists) {
                     // 只有当 host:port 组合不存在时才添加
                     existingRegionServer.getHostsPortsStatusList().add(
-                        new HostPortStatus(host, port, "active", 0)
+                        new HostPortStatus(host, port, "active", 0, System.currentTimeMillis())
                     );
                     zkSyncManager.updateRegionInfo(existingRegionServer);
                     metaManager.updateRegionInfo(existingRegionServer);
@@ -134,7 +134,7 @@ public class MasterServer {
                 // 创建新的 RegionServerInfo
                 regionserverId = UUID.randomUUID().toString();
                 List<HostPortStatus> hostPorts = new ArrayList<>();
-                hostPorts.add(new HostPortStatus(host, port, "active", 0));
+                hostPorts.add(new HostPortStatus(host, port, "active", 0, System.currentTimeMillis()));
                 
                 RegionServerInfo newRegionServer = new RegionServerInfo(
                     regionserverId,
@@ -161,8 +161,8 @@ public class MasterServer {
         }
     }
 
-    private void handleHeartbeat(Map<String, Object> request, PrintWriter out) {
-         try {
+    public void handleHeartbeat(Map<String, Object> request, PrintWriter out) {
+        try {
             String regionserverId = (String) request.get("regionserverId");
             String host = (String) request.get("host");
             int port = (int) request.get("port");
@@ -170,11 +170,14 @@ public class MasterServer {
 
             RegionServerInfo region = regionWatcher.getRegionById(regionserverId);
             if (region != null) {
-                // 只更新匹配的 host:port 的连接数
+                // 更新匹配的 host:port 的连接数和心跳时间
                 region.getHostsPortsStatusList().stream()
                     .filter(hp -> hp.getHost().equals(host) && hp.getPort() == port)
-                    .forEach(hp -> hp.setConnections(connections));
-                
+                    .forEach(hp -> {
+                        hp.setConnections(connections);
+                        hp.setLastHeartbeatTime(System.currentTimeMillis());
+                    });
+
                 zkSyncManager.updateRegionInfo(region);
                 metaManager.updateRegionInfo(region);
 
