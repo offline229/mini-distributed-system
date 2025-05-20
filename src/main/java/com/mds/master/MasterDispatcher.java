@@ -43,6 +43,9 @@ public class MasterDispatcher {
         if (!isRunning) {
             return buildErrorResponse("Dispatcher is not running");
         }
+        if (sql == null || sql.trim().isEmpty()) {
+            return buildErrorResponse("SQL is empty or illegal");
+        }
         try {
             boolean isDML = isDML(sql);
             return handleSqlRequest(isDML);

@@ -101,4 +101,27 @@ public void setUp() {
         assertEquals(MasterDispatcher.RESPONSE_TYPE_ERROR, response.get("type"));
         assertEquals("No available RegionServer", response.get("message"));
     }
+
+    @Test
+    public void testHandleIllegalSQL() {
+        // 非法SQL或空SQL
+        Map<String, Object> response1 = dispatcher.dispatch("");
+        assertEquals(MasterDispatcher.RESPONSE_TYPE_ERROR, response1.get("type"));
+        assertTrue(response1.get("message").toString().toLowerCase().contains("illegal")
+            || response1.get("message").toString().toLowerCase().contains("empty"));
+
+        Map<String, Object> response2 = dispatcher.dispatch(null);
+        assertEquals(MasterDispatcher.RESPONSE_TYPE_ERROR, response2.get("type"));
+        assertTrue(response2.get("message").toString().toLowerCase().contains("illegal") 
+            || response2.get("message").toString().toLowerCase().contains("empty"));
+    }
+
+    @Test
+    public void testDispatchWhenNotStarted() {
+        // 关闭dispatcher后再分发
+        dispatcher.stop();
+        Map<String, Object> response = dispatcher.dispatch("SELECT * FROM test");
+        assertEquals(MasterDispatcher.RESPONSE_TYPE_ERROR, response.get("type"));
+        assertTrue(response.get("message").toString().toLowerCase().contains("not running"));
+    }
 }

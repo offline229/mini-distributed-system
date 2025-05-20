@@ -85,18 +85,24 @@ public class MasterServer {
         ) {
             String requestLine;
             while ((requestLine = in.readLine()) != null) {
-                // 解析请求
-                Map<String, Object> request = mapper.readValue(requestLine, Map.class);
-                String type = (String) request.get("type");
+                try {
+                    // 解析请求
+                    Map<String, Object> request = mapper.readValue(requestLine, Map.class);
+                    String type = (String) request.get("type");
 
-                if ("REGISTER".equalsIgnoreCase(type)) {
-                    handleRegionRegistration(request, out); // 处理 RegionServer 注册请求
-                } else if ("HEARTBEAT".equalsIgnoreCase(type)) {
-                    handleHeartbeat(request, out);          // 处理 RegionServer 心跳请求
-                } else if ("SQL".equalsIgnoreCase(type)) {
-                    handleClientSqlRequest(request, out);   // 处理客户端 SQL 请求
-                } else {
-                    sendErrorResponse(out, "Unknown request type: " + type, null);
+                    if ("REGISTER".equalsIgnoreCase(type)) {
+                        handleRegionRegistration(request, out); // 处理 RegionServer 注册请求
+                    } else if ("HEARTBEAT".equalsIgnoreCase(type)) {
+                        handleHeartbeat(request, out);          // 处理 RegionServer 心跳请求
+                    } else if ("SQL".equalsIgnoreCase(type)) {
+                        handleClientSqlRequest(request, out);   // 处理客户端 SQL 请求
+                    } else {
+                        sendErrorResponse(out, "Unknown request type: " + type, null);
+                    }
+                } catch (Exception parseEx) {
+                    // 捕获JSON解析等异常，返回错误响应
+                    System.err.println("请求解析失败: " + parseEx.getMessage());
+                    sendErrorResponse(out, "Malformed JSON: " + parseEx.getMessage(), null);
                 }
             }
         } catch (IOException e) {

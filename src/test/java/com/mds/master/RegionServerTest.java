@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
 
-public class RegionServerRegisterTest {
+public class RegionServerTest {
     private TestingServer zkServer;
     private CuratorFramework zkClient;
     private RegionWatcher regionWatcher;
@@ -173,6 +173,45 @@ public class RegionServerRegisterTest {
             assertEquals("Port应该匹配", expected.getPort(), actual.getPort());
             assertEquals("Status应该匹配", expected.getStatus(), actual.getStatus());
         });
+    }
+
+    @Test
+    public void testHeartbeatTimeoutDetection() throws Exception {
+        // 创建测试RegionServer
+        String regionId = "test-heartbeat-region";
+        RegionServerInfo region = createTestRegionServer(regionId, "localhost", 9100, "replica-heartbeat");
+        // 设置心跳时间为很久以前，模拟超时
+        region.getHostsPortsStatusList().get(0).setLastHeartbeatTime(System.currentTimeMillis() - 60_000);
+
+        // 注册到ZK
+        String path = REGIONS_PATH + "/" + regionId;
+        byte[] data = objectMapper.writeValueAsBytes(region);
+        zkClient.create().creatingParentsIfNeeded().forPath(path, data);
+
+        Thread.sleep(WAIT_TIME);
+
+        // RegionWatcher应能检测到该Region
+        assertTrue(regionWatcher.getOnlineRegions().containsKey(regionId));
+
+        // 手动触发心跳超时检测
+        regionWatcher.checkHeartbeatTimeout();
+
+        // 检查超时后Region是否被移除
+        Map<String, RegionServerInfo> onlineRegions = regionWatcher.getOnlineRegions();
+        assertFalse("超时后Region应被移除", onlineRegions.containsKey(regionId));
+    }
+
+    @Test
+    public void testHandleZKExceptionGracefully() throws Exception {
+        // 模拟ZK异常：关闭zkClient后再调用RegionWatcher方法
+        zkClient.close();
+
+        try {
+            regionWatcher.getOnlineRegions();
+            // 如果没有抛异常，说明处理正常
+        } catch (Exception e) {
+            fail("RegionWatcher应能优雅处理ZK异常，不应抛出未捕获异常");
+        }
     }
 
     @After
