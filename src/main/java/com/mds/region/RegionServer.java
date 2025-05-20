@@ -289,8 +289,6 @@ public class RegionServer {
         return connectionStatus;
     }
 
-    // 添加数据同步方法
-    // 修改数据同步方法
     public void syncData(String tableName, String operation, String data) {
         logger.info("同步数据到副本: table={}, operation={}, data={}", tableName, operation, data);
 
@@ -303,58 +301,78 @@ public class RegionServer {
             }
 
             // 获取所有RegionServer节点
-            List<String> regionServers = zkHandler.getChildren("/mds/regions-meta");
-            logger.info("发现RegionServer节点数量: {}", regionServers.size());
+            String metaPath = "/mds/regions-meta";
+            List<String> regionServers;
+            try {
+                regionServers = zkHandler.getChildren(metaPath);
+                logger.info("发现RegionServer节点数量: {}", regionServers.size());
+            } catch (Exception e) {
+                logger.error("获取RegionServer节点失败: {}", e.getMessage());
+                return;
+            }
 
             // 查找具有相同replicaKey的服务器
             System.out.println("当前副本标识: " + this.replicaKey);
             int replicaCount = 0;
+            int hostCount = 0;
 
-            for (String serverPath : regionServers) {
-                String fullPath = "/mds/regions-meta/" + serverPath;
+            for (String serverID : regionServers) {
+                String fullPath = metaPath + "/" + serverID;
                 String serverData = zkHandler.getData(fullPath);
 
                 if (serverData != null && !serverData.isEmpty()) {
-                    JSONObject serverInfo = new JSONObject(serverData);
-                    String serverReplicaKey = serverInfo.optString("replicaKey", "");
+                    try {
+                        JSONObject serverInfo = new JSONObject(serverData);
+                        String serverReplicaKey = serverInfo.optString("replicaKey", "");
 
-                    // 检查是否具有相同的replicaKey
-                    if (this.replicaKey.equals(serverReplicaKey) && !serverPath.equals(this.serverId)) {
-                        replicaCount++;
-                        System.out.println("\n发现副本服务器: " + serverPath);
+                        // 检查是否具有相同的replicaKey
+                        if (this.replicaKey.equals(serverReplicaKey)) {
+                            replicaCount++;
+                            System.out.println("\n发现副本服务器组ID: " + serverID);
+                            System.out.println("副本标识: " + serverReplicaKey);
 
-                        // 提取主机和端口信息
-                        if (serverInfo.has("hostsPortsStatusList")) {
-                            JSONArray hostsList = serverInfo.getJSONArray("hostsPortsStatusList");
-                            for (int i = 0; i < hostsList.length(); i++) {
-                                JSONObject hostInfo = hostsList.getJSONObject(i);
-                                String host = hostInfo.getString("host");
-                                int port = hostInfo.getInt("port");
-                                String status = hostInfo.optString("status", "unknown");
+                            // 提取主机和端口信息列表
+                            if (serverInfo.has("hostsPortsStatusList")) {
+                                JSONArray hostsList = serverInfo.getJSONArray("hostsPortsStatusList");
+                                System.out.println("该副本组内服务器数量: " + hostsList.length());
 
-                                System.out.printf("  主机: %s, 端口: %d, 状态: %s\n",
-                                        host, port, status);
+                                // 遍历每个服务器信息
+                                for (int i = 0; i < hostsList.length(); i++) {
+                                    JSONObject hostInfo = hostsList.getJSONObject(i);
+                                    String host = hostInfo.getString("host");
+                                    int port = hostInfo.getInt("port");
+                                    String status = hostInfo.optString("status", "unknown");
+                                    long lastHeartbeat = hostInfo.optLong("lastHeartbeatTime", 0);
+
+                                    hostCount++;
+                                    System.out.printf("  服务器 %d: 主机=%s, 端口=%d, 状态=%s\n",
+                                            i + 1, host, port, status);
+                                    System.out.printf("    最后心跳时间: %s\n",
+                                            new java.util.Date(lastHeartbeat).toString());
+
+                                    // 发送更改请求
+                                }
+                            } else {
+                                System.out.println("警告: 未找到主机端口列表信息");
                             }
-                        } else {
-                            // 尝试从serverInfo中直接获取host和port
-                            String host = serverInfo.optString("host", "未知");
-                            int port = serverInfo.optInt("port", -1);
-                            System.out.printf("  主机: %s, 端口: %d\n", host, port);
                         }
+                    } catch (Exception e) {
+                        logger.warn("解析服务器信息失败: {}, 错误: {}", serverID, e.getMessage());
                     }
                 }
             }
 
-            System.out.println("\n共找到 " + replicaCount + " 个相同副本标识的服务器");
-
-            // 实际同步数据的逻辑可以在这里添加
+            System.out.println("\n=== 同步统计 ===");
+            System.out.println("发现副本组数量: " + replicaCount);
+            System.out.println("发现服务器数量: " + hostCount);
+            System.out.println("同步操作: " + operation);
+            System.out.println("同步表: " + tableName);
 
         } catch (Exception e) {
             logger.error("查找副本服务器失败", e);
             System.err.println("查找副本服务器失败: " + e.getMessage());
+            e.printStackTrace();
         }
-
-        System.out.println("同步数据到副本: " + tableName + ", " + operation + ", " + data);
     }
 
     private Map<String, Long> getTableRows() throws SQLException {
