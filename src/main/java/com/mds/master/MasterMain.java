@@ -40,7 +40,7 @@ public class MasterMain {
             // 创建并启动选举程序
             final CuratorFramework finalClient = client;
             election = new MasterElection(finalClient, masterID);
-            election.start();
+            election.start();   // 启动选举程序
             System.out.println("Master 选举程序已启动");
 
             // 添加关闭钩子

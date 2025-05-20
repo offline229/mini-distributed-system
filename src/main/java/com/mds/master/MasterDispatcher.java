@@ -5,17 +5,16 @@ import com.mds.master.self.MetaManager;
 import com.mds.common.RegionServerInfo.HostPortStatus;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 public class MasterDispatcher {
+    // 定义相应类型常量
     public static final String RESPONSE_TYPE_DDL_RESULT = "DDL_RESULT";
     public static final String RESPONSE_TYPE_DML_REDIRECT = "DML_REDIRECT";
     public static final String RESPONSE_TYPE_ERROR = "ERROR";
 
     private final RegionWatcher regionWatcher;
     private final MetaManager metaManager;
-    private volatile boolean isRunning = false;
+    private volatile boolean isRunning = false;     // 是否正在运行
 
     // Constructor accepting RegionWatcher
     public MasterDispatcher(RegionWatcher regionWatcher) {
@@ -28,16 +27,19 @@ public class MasterDispatcher {
         this.regionWatcher = regionWatcher;
     }
 
+    // 启动 MasterDispatcher
     public void start() {
         isRunning = true;
         System.out.println("MasterDispatcher started");
     }
 
+    // 停止 MasterDispatcher
     public void stop() {
         isRunning = false;
         System.out.println("MasterDispatcher stopped");
     }
 
+    // 分发 SQL 请求
     public Map<String, Object> dispatch(String sql) {
         Map<String, Object> response = new HashMap<>();
 
@@ -48,11 +50,12 @@ public class MasterDispatcher {
         }
 
         try {
+            // 判断 SQL 类型
             boolean isDML = isDML(sql);
 
-            if (isDML) {
+            if (isDML) {    // DML 请求
                 return handleDMLRequest(sql);
-            } else {
+            } else {        // DDL 请求
                 return handleDDLRequest(sql);
             }
         } catch (Exception e) {
@@ -62,9 +65,11 @@ public class MasterDispatcher {
         }
     }
 
+    // 处理 DML 请求
     private Map<String, Object> handleDMLRequest(String sql) {
         Map<String, Object> response = new HashMap<>();
         try {
+            // 获取所有在线的 RegionServer里负载最低的节点
             RegionServerInfo targetRegion = findOptimalRegionServer();
             
             if (targetRegion == null) {
@@ -77,7 +82,7 @@ public class MasterDispatcher {
             HostPortStatus optimalHost = findOptimalHost(targetRegion);
             
             // 打印选中的 host 和 port
-        System.out.println("[MasterDispatcher] DML 请求选中的 RegionServer: regionId=" + targetRegion.getRegionserverID() +
+            System.out.println("[MasterDispatcher] DML 请求选中的 RegionServer: regionId=" + targetRegion.getRegionserverID() +
                            ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
 
             response.put("type", RESPONSE_TYPE_DML_REDIRECT);
@@ -93,36 +98,6 @@ public class MasterDispatcher {
         return response;
     }
 
-    // private Map<String, Object> handleDDLRequest(String sql) {
-    //     Map<String, Object> response = new HashMap<>();
-    //     try {
-    //         List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
-    //         Set<String> processedReplicaKeys = new HashSet<>();
-    //         List<Map<String, Object>> regionDetails = new ArrayList<>();
-
-    //         for (RegionServerInfo region : allRegions) {
-    //             // 对于DDL，每个副本组只选择一个节点
-    //             if (processedReplicaKeys.add(region.getReplicaKey())) {
-    //                 HostPortStatus optimalHost = findOptimalHost(region);
-    //                 Map<String, Object> regionInfo = new HashMap<>();
-    //                 regionInfo.put("regionId", region.getRegionserverID());
-    //                 regionInfo.put("replicaKey", region.getReplicaKey());
-    //                 regionInfo.put("host", optimalHost.getHost());
-    //                 regionInfo.put("port", optimalHost.getPort());
-    //                 regionDetails.add(regionInfo);
-    //             }
-    //         }
-
-    //         response.put("type", RESPONSE_TYPE_DDL_RESULT);
-    //         response.put("regions", regionDetails);
-            
-    //     } catch (Exception e) {
-    //         response.put("type", RESPONSE_TYPE_ERROR);
-    //         response.put("message", "DDL dispatch failed: " + e.getMessage());
-    //     }
-    //     return response;
-    // }
-
     private Map<String, Object> handleDDLRequest(String sql) {
     Map<String, Object> response = new HashMap<>();
     try {
@@ -130,6 +105,7 @@ public class MasterDispatcher {
         List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
         System.out.println("[MasterDispatcher] 当前在线 RegionServer 数量: " + allRegions.size());
 
+        // 如果没有可用的 RegionServer，返回错误
         if (allRegions.isEmpty()) {
             response.put("type", RESPONSE_TYPE_ERROR);
             response.put("message", "No available RegionServer");

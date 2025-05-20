@@ -18,25 +18,29 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Date;
 
 public class MasterElection {
-    private static final String BASE_PATH = "/mds";
-    private static final String MASTER_BASE_PATH = BASE_PATH + "/master";
-    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";
-    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";
+    private static final String BASE_PATH = "/mds";                             //系统根路径
+    private static final String MASTER_BASE_PATH = BASE_PATH + "/master";       //主节点总路径
+    private static final String ACTIVE_PATH = MASTER_BASE_PATH + "/active";     //活跃主节点
+    private static final String STANDBY_PATH = MASTER_BASE_PATH + "/standby";   //备用主节点
     private static final int MASTER_PORT = 8000;
 
-    private final CuratorFramework zkClient;
-    private final LeaderSelector leaderSelector;
-    private final String masterID;
-    private final AtomicBoolean isRunning;
-    private final ObjectMapper objectMapper;
-    private CountDownLatch masterLatch;
+    private final CuratorFramework zkClient;        //ZK客户端，用于与Zookeeper交互
+    private final LeaderSelector leaderSelector;    //主节点选举器，用于选举主节点
+    private final String masterID;                  //主节点ID，当前节点唯一标志，区分不同节点
+    private final AtomicBoolean isRunning;          //是否运行
+    private final ObjectMapper objectMapper;        //JSON序列化工具
+    private CountDownLatch masterLatch;             //倒计时锁，用于控制主节点选举的生命周期
+
+    // 组件实例
     private volatile MasterServer masterServer;
     private volatile RegionWatcher regionWatcher;
     private volatile MasterDispatcher dispatcher;
     private volatile MetaManager metaManager;
     private volatile ZKSyncManager zkSyncManager;
+    // 主节点信息
     private volatile MasterInfo masterInfo;
 
+    // 构造函数
     public MasterElection(CuratorFramework zkClient, String masterID) {
         this.zkClient = zkClient;
         this.masterID = masterID;
@@ -54,18 +58,24 @@ public class MasterElection {
                     "standby",
                     System.currentTimeMillis());
 
-            // 初始化ZK路径
+            // 初始化ZK路径，确保 ZooKeeper 中的路径存在
             initializePaths();
 
-            // 初始化LeaderSelector
+            // 1.初始化LeaderSelector，用于选举主节点——要指定 ZooKeeper 客户端、选举路径和选举监听器
             this.leaderSelector = new LeaderSelector(
+                    // ZK客户端
                     zkClient,
+                    // 选举主节点的路径
                     MASTER_BASE_PATH,
+                    // 2.选举监听器
                     new LeaderSelectorListenerAdapter() {
+                        // 选举成功后回调，执行主节点逻辑
                         @Override
                         public void takeLeadership(CuratorFramework client) throws Exception {
-                            System.out.println("主节点选举成功！当前主节点 masterID: " + masterID);
-                            masterLatch = new CountDownLatch(1);
+                            System.out.println("[ MasterElection ] 主节点选举成功！当前主节点 masterID: " + masterID);
+                            // 倒计时锁——用来控制主节点选举生命周期的同步工具。
+                            // 主要作用是在主节点的生命周期内保持阻塞，直到主节点释放领导权或程序关闭时才解除阻塞。
+                            masterLatch = new CountDownLatch(1);    //设置计数为1
 
                             try {
                                 // 升级为活跃节点
@@ -99,12 +109,14 @@ public class MasterElection {
         }
     }
 
+    //初始化ZK路径
     private void initializePaths() throws Exception {
         createIfNotExists(MASTER_BASE_PATH);
         createIfNotExists(ACTIVE_PATH);
         createIfNotExists(STANDBY_PATH);
     }
 
+    //创建ZK路径
     private void createIfNotExists(String path) throws Exception {
         if (zkClient.checkExists().forPath(path) == null) {
             zkClient.create()
@@ -115,6 +127,7 @@ public class MasterElection {
         }
     }
 
+    //初始化组件
     private void initializeComponents(CuratorFramework client) throws Exception {
         regionWatcher = new RegionWatcher(client);
         zkSyncManager = new ZKSyncManager(client.getZookeeperClient().getZooKeeper());
@@ -122,6 +135,7 @@ public class MasterElection {
         dispatcher = new MasterDispatcher(metaManager, regionWatcher);
     }
 
+    //启动服务
     private void startServices() throws Exception {
         // 启动Region监控
         regionWatcher.startWatching();
@@ -145,10 +159,12 @@ public class MasterElection {
         System.out.println("MasterDispatcher 启动成功");
     }
 
+    //检查组件健康状态
     private boolean checkComponentsHealth() {
         return regionWatcher.isRunning() && masterServer != null && dispatcher != null;
     }
 
+    //注册为备选节点
     private void registerAsStandby() {
         try {
             String standbyPath = STANDBY_PATH + "/" + masterID;
@@ -173,6 +189,7 @@ public class MasterElection {
         }
     }
 
+    //升级为活跃节点
     private void promoteToActive() throws Exception {
         try {
             // 删除备选节点
@@ -206,6 +223,7 @@ public class MasterElection {
         }
     }
 
+    //用于清理当前主节点的资源（如组件、服务）并降级为备用节点，在主节点失去领导权或需要释放资源时调用
     private void cleanup() {
         System.out.println("开始清理资源...");
         try {
@@ -226,12 +244,13 @@ public class MasterElection {
             System.err.println("清理资源时发生错误: " + e.getMessage());
         } finally {
             if (masterLatch != null) {
-                masterLatch.countDown();
+                masterLatch.countDown();    //释放主节点选举的锁，解除阻塞
             }
             System.out.println("资源清理完成");
         }
     }
 
+    //降级为备用节点
     private void demoteToStandby() {
         try {
             String activePath = ACTIVE_PATH + "/" + masterID;
@@ -246,29 +265,33 @@ public class MasterElection {
         }
     }
 
+    // 3.启动选举
     public void start() {
         System.out.println("开始选举！masterID: " + masterID);
         this.leaderSelector.start();
     }
 
+    // 关闭选举：关闭整个 ME 实例，释放资源并停止主节点选举，通常在程序退出或需要停止主节点选举时调用。
     public void close() {
         System.out.println("正在关闭主节点...");
-        isRunning.set(false);
+        isRunning.set(false);   //设置运行状态为 false，停止主节点选举
         if (masterLatch != null) {
             try {
-                masterLatch.await();
+                masterLatch.await();    //等待主节点选举的锁被释放
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                Thread.currentThread().interrupt();//恢复中断状态
             }
         }
-        this.leaderSelector.close();
+        this.leaderSelector.close();//关闭选举器
         System.out.println("主节点已关闭！masterID: " + masterID);
     }
 
+    //获取当前主节点信息
     public MasterInfo getCurrentMasterInfo() {
         return masterInfo;
     }
 
+    //获取所有活跃主节点信息
     public MasterInfo getActiveMasterInfo() throws Exception {
         try {
             List<String> activeNodes = zkClient.getChildren().forPath(ACTIVE_PATH);
