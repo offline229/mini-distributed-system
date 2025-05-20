@@ -53,7 +53,7 @@ public class RegionServerShardingTest {
     public void testInsertOperation() throws Exception {
         // 测试插入操作
         String sql = "INSERT INTO users(id, name, age) VALUES(?, ?, ?)";
-        Object[] params = { 15, "test_user", 25 };
+        Object[] params = { 11, "tet_user", 25 };
         System.out.println("\n测试3: 插入操作");
         System.out.println("执行SQL: " + sql + ", 参数: [15, 'test_user', 25]");
 

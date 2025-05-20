@@ -87,7 +87,7 @@ public class Client {
         return executeOnRegionServer(sql, params, regionHost, regionPort);
     }
 
-    private Object executeOnRegionServer(String sql, Object[] params, String host, int port) throws Exception {
+    public Object executeOnRegionServer(String sql, Object[] params, String host, int port) throws Exception {
         try {
             // 连接RegionServer
             regionHandler.connect(host, port);
@@ -160,31 +160,22 @@ public class Client {
     }
 
     /*
-     * CREATE TABLE users1 (id INT PRIMARY KEY, nameVARCHAR(50), age INT)
-     * 
-     * INSERT INTO users (id, name, age) VALUES (1, "测试用户1", 25)
-     * 
-     * SELECT * FROM users WHERE id = 1 SELECT * FROM users WHERE age > 20 SELECT
-     * COUNT(*) FROM users
-     * 
-     * UPDATE users SET name = "更新用户", age = 30 WHERE id = 1
-     * 
+     * 允许的SQL语句示例：
      * DELETE FROM users WHERE id = 1
-     * 
-     * INSERT INTO users (id, name, age) VALUES (?, ?, ?) SELECT * FROM users WHERE
-     * id = ? UPDATE users SET name = ?, age = ? WHERE id = ?
-     * SELECT age, COUNT(*) as count, AVG(id) as avg_id FROM users WHERE age > 20
-     * GROUP BY age HAVING count > 1 ORDER BY age DESC
-     * 
-     * SELECT * FROM users WHERE age BETWEEN 20 AND 30 AND name LIKE '%Test%' ORDER
-     * BY id DESC LIMIT 5
+     * UPDATE users SET name = "更新用户", age = 30 WHERE id = 1
+     * CREATE TABLE users1 (id INT PRIMARY KEY, nameVARCHAR(50), age INT)
+     * INSERT INTO users (id, name, age) VALUES (1, "测试用户1", 25)
+     * SELECT * FROM users WHERE id = 1
+     * SELECT * FROM users WHERE age > 20
      * 
      * SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users) AND id IN
      * (SELECT id FROM users WHERE name LIKE '%Test%')
      * 
      * SELECT age, COUNT(*) as user_count, MIN(id) as min_id, MAX(id) as max_id FROM
      * users GROUP BY age HAVING user_count > 0 ORDER BY age
+     * 
      */
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         Client client = new Client();

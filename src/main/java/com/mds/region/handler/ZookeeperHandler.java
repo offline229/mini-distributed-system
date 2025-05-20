@@ -8,6 +8,7 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 
 import java.io.IOException;
+import java.util.List;
 
 public class ZookeeperHandler {
     private static final String ZK_HOST = "localhost:2181";
@@ -85,6 +86,22 @@ public class ZookeeperHandler {
                 // 忽略节点已存在的异常
             }
         }
+    }
+
+    // 添加到ZookeeperHandler类中
+    public List<String> getChildren(String path) throws KeeperException, InterruptedException {
+        if (zk == null) {
+            throw new IllegalStateException("ZooKeeper连接未初始化");
+        }
+        return zk.getChildren(path, false);
+    }
+
+    public String getData(String path) throws KeeperException, InterruptedException {
+        if (zk == null) {
+            throw new IllegalStateException("ZooKeeper连接未初始化");
+        }
+        byte[] data = zk.getData(path, false, null);
+        return data != null ? new String(data) : null;
     }
 
     // 关闭ZooKeeper连接
