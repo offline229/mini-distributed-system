@@ -47,9 +47,14 @@ public class MasterServer {
             }
 
             while (!serverSocket.isClosed()) {
-                Socket socket = serverSocket.accept();              // 接收到新的连接
-                System.out.println("接收到新的连接: " + socket.getRemoteSocketAddress());
-                threadPool.submit(() -> handleConnection(socket));  // 提交处理任务到线程池
+                try {
+                    Socket socket = serverSocket.accept();
+                    System.out.println("接收到新的连接: " + socket.getRemoteSocketAddress());
+                    threadPool.submit(() -> handleConnection(socket));
+                } catch (IOException e) {
+                    // accept() 抛异常时，说明 socket 已关闭，直接跳出循环
+                    break;
+                }
             }
         } catch (IOException e) {
             System.err.println("启动 MasterServer 失败: " + e.getMessage());

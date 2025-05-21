@@ -1,5 +1,6 @@
 package com.mds.master;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mds.common.RegionServerInfo;
 import com.mds.master.self.MetaManager;
 import org.junit.jupiter.api.AfterEach;
@@ -12,6 +13,7 @@ import java.net.Socket;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -52,23 +54,53 @@ public class MasterServerSocketTest {
     @AfterEach
     public void stopServer() throws Exception {
         masterServer.stop();
-        Thread.sleep(500); // 等待端口释放
+        Thread.sleep(1000); // 等待端口释放
     }
 
-    @Test
-    public void testHeartbeatSocketCommunication() throws Exception {
-        String heartbeatJson = "{\"type\":\"heartbeat\",\"regionserverID\":\"region-1\",\"replicaKey\":\"replica-1\"}";
+@Test
+public void testHeartbeatSocketCommunication() throws Exception {
+    // 1. 先模拟 region-1 已注册
+    RegionServerInfo mockInfo = new RegionServerInfo();
+    mockInfo.setRegionserverID("region-1");
+    mockInfo.setReplicaKey("replica-1");
+    mockInfo.setHostsPortsStatusList(new java.util.ArrayList<>());
+    RegionServerInfo.HostPortStatus status = new RegionServerInfo.HostPortStatus(
+        "127.0.0.1", 9000, "ACTIVE", 0, System.currentTimeMillis()
+    );
+    mockInfo.getHostsPortsStatusList().add(status);
 
-        try (Socket socket = new Socket("localhost", port);
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+    // mock regionWatcher
+    when(regionWatcher.getRegionById("region-1")).thenReturn(mockInfo);
+    // mock metaManager
+    when(metaManager.getRegionInfo("region-1")).thenReturn(mockInfo);
+    doNothing().when(metaManager).updateRegionInfo(any(RegionServerInfo.class));
 
-            out.println(heartbeatJson);
-            String response = in.readLine();
-            assertNotNull(response);
-            assertTrue(response.contains("success") || response.contains("ok"));
-        }
+    // 2. 发送心跳请求
+    String heartbeatJson = "{\"type\":\"HEARTBEAT\"," +
+            "\"regionserverId\":\"region-1\"," +
+            "\"replicaKey\":\"replica-1\"," +
+            "\"host\":\"127.0.0.1\"," +
+            "\"port\":9000," +
+            "\"status\":\"ACTIVE\"," +
+            "\"connections\":0}";
+
+    try (Socket socket = new Socket("localhost", port);
+         PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+         BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+        out.println(heartbeatJson);
+        String response = in.readLine();
+        System.out.println("收到服务器响应: " + response);
+
+        assertNotNull(response, "响应不应为空");
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> responseMap = mapper.readValue(response, Map.class);
+        assertEquals("ok", responseMap.get("status"),
+            "心跳响应状态应为 ok，实际响应: " + response);
     }
+
+    verify(metaManager).updateRegionInfo(any(RegionServerInfo.class));
+}
 
     @Test
     public void testRegisterSocketCommunication() throws Exception {

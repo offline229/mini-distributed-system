@@ -300,6 +300,9 @@ public class MasterElection {
             }
 
             String activePath = ACTIVE_PATH + "/" + activeNodes.get(0);
+            // 添加节点信息打印
+            System.out.println("活跃主节点信息：");
+            System.out.println("└── 路径: " + activePath);
             byte[] data = zkClient.getData().forPath(activePath);
             return objectMapper.readValue(data, MasterInfo.class);
         } catch (Exception e) {
