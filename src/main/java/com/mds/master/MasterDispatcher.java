@@ -5,195 +5,117 @@ import com.mds.master.self.MetaManager;
 import com.mds.common.RegionServerInfo.HostPortStatus;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 public class MasterDispatcher {
+    // 定义相应类型常量
     public static final String RESPONSE_TYPE_DDL_RESULT = "DDL_RESULT";
     public static final String RESPONSE_TYPE_DML_REDIRECT = "DML_REDIRECT";
     public static final String RESPONSE_TYPE_ERROR = "ERROR";
 
     private final RegionWatcher regionWatcher;
     private final MetaManager metaManager;
-    private volatile boolean isRunning = false;
+    private volatile boolean isRunning = false; // 是否正在运行
 
-    // Constructor accepting RegionWatcher
     public MasterDispatcher(RegionWatcher regionWatcher) {
         this.regionWatcher = regionWatcher;
-        this.metaManager = new MetaManager(regionWatcher); 
+        this.metaManager = new MetaManager(regionWatcher);
     }
-    
+
     public MasterDispatcher(MetaManager metaManager, RegionWatcher regionWatcher) {
         this.metaManager = metaManager;
         this.regionWatcher = regionWatcher;
     }
 
+    // 启动 MasterDispatcher
     public void start() {
         isRunning = true;
-        System.out.println("MasterDispatcher started");
+        System.out.println("[MasterDispatcher] started");
     }
 
+    // 停止 MasterDispatcher
     public void stop() {
         isRunning = false;
-        System.out.println("MasterDispatcher stopped");
+        System.out.println("[MasterDispatcher] stopped");
     }
 
+    // 分发 SQL 请求
     public Map<String, Object> dispatch(String sql) {
-        Map<String, Object> response = new HashMap<>();
-
         if (!isRunning) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "Dispatcher is not running");
-            return response;
+            return buildErrorResponse("Dispatcher is not running");
         }
-
+        if (sql == null || sql.trim().isEmpty()) {
+            return buildErrorResponse("SQL is empty or illegal");
+        }
         try {
             boolean isDML = isDML(sql);
-
-            if (isDML) {
-                return handleDMLRequest(sql);
-            } else {
-                return handleDDLRequest(sql);
-            }
+            return handleSqlRequest(isDML);
         } catch (Exception e) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "Failed to process SQL: " + e.getMessage());
-            return response;
+            return buildErrorResponse("Failed to process SQL: " + e.getMessage());
         }
     }
 
-    private Map<String, Object> handleDMLRequest(String sql) {
-        Map<String, Object> response = new HashMap<>();
-        try {
-            RegionServerInfo targetRegion = findOptimalRegionServer();
-            
-            if (targetRegion == null) {
-                response.put("type", RESPONSE_TYPE_ERROR);
-                response.put("message", "No available RegionServer");
-                return response;
-            }
-
-            // 选择负载最低的副本
-            HostPortStatus optimalHost = findOptimalHost(targetRegion);
-            
-            // 打印选中的 host 和 port
-        System.out.println("[MasterDispatcher] DML 请求选中的 RegionServer: regionId=" + targetRegion.getRegionserverID() +
-                           ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
-
-            response.put("type", RESPONSE_TYPE_DML_REDIRECT);
-            response.put("regionId", targetRegion.getRegionserverID());
-            // response.put("replicaKey", targetRegion.getReplicaKey());
-            response.put("host", optimalHost.getHost());
-            response.put("port", optimalHost.getPort());
-            
-        } catch (Exception e) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "DML dispatch failed: " + e.getMessage());
-        }
-        return response;
-    }
-
-    // private Map<String, Object> handleDDLRequest(String sql) {
-    //     Map<String, Object> response = new HashMap<>();
-    //     try {
-    //         List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
-    //         Set<String> processedReplicaKeys = new HashSet<>();
-    //         List<Map<String, Object>> regionDetails = new ArrayList<>();
-
-    //         for (RegionServerInfo region : allRegions) {
-    //             // 对于DDL，每个副本组只选择一个节点
-    //             if (processedReplicaKeys.add(region.getReplicaKey())) {
-    //                 HostPortStatus optimalHost = findOptimalHost(region);
-    //                 Map<String, Object> regionInfo = new HashMap<>();
-    //                 regionInfo.put("regionId", region.getRegionserverID());
-    //                 regionInfo.put("replicaKey", region.getReplicaKey());
-    //                 regionInfo.put("host", optimalHost.getHost());
-    //                 regionInfo.put("port", optimalHost.getPort());
-    //                 regionDetails.add(regionInfo);
-    //             }
-    //         }
-
-    //         response.put("type", RESPONSE_TYPE_DDL_RESULT);
-    //         response.put("regions", regionDetails);
-            
-    //     } catch (Exception e) {
-    //         response.put("type", RESPONSE_TYPE_ERROR);
-    //         response.put("message", "DDL dispatch failed: " + e.getMessage());
-    //     }
-    //     return response;
-    // }
-
-    private Map<String, Object> handleDDLRequest(String sql) {
-    Map<String, Object> response = new HashMap<>();
-    try {
-        // 获取所有在线的 RegionServer
+    // 统一处理 DML/DDL 请求
+    private Map<String, Object> handleSqlRequest(boolean isDML) {
         List<RegionServerInfo> allRegions = new ArrayList<>(regionWatcher.getOnlineRegions().values());
-        System.out.println("[MasterDispatcher] 当前在线 RegionServer 数量: " + allRegions.size());
-
         if (allRegions.isEmpty()) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "No available RegionServer");
-            return response;
+            return buildErrorResponse("No available RegionServer");
         }
 
         // 找到负载最小的 RegionServer
         RegionServerInfo optimalRegion = allRegions.stream()
-            .min(Comparator.comparingInt(region -> 
-                region.getHostsPortsStatusList().stream()
-                    .mapToInt(HostPortStatus::getConnections)
-                    .min()
-                    .orElse(Integer.MAX_VALUE)))
-            .orElse(null);
+                .min(Comparator.comparingInt(region -> region.getHostsPortsStatusList().stream()
+                        .mapToInt(HostPortStatus::getConnections)
+                        .min()
+                        .orElse(Integer.MAX_VALUE)))
+                .orElse(null);
 
         if (optimalRegion == null) {
-            response.put("type", RESPONSE_TYPE_ERROR);
-            response.put("message", "No available RegionServer");
-            return response;
+            return buildErrorResponse("No available RegionServer");
         }
 
         // 找到负载最小的副本
         HostPortStatus optimalHost = findOptimalHost(optimalRegion);
 
         // 打印选中的 host 和 port
-        System.out.println("[MasterDispatcher] DDL 请求选中的 RegionServer: regionId=" + optimalRegion.getRegionserverID() +
-                           ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
+        System.out.println("[MasterDispatcher] " + (isDML ? "DML" : "DDL") +
+                " 请求选中的 RegionServer: regionId=" + optimalRegion.getRegionserverID() +
+                ", host=" + optimalHost.getHost() + ", port=" + optimalHost.getPort());
 
-                           
-        response.put("type", RESPONSE_TYPE_DDL_RESULT);
-        response.put("regionId", optimalRegion.getRegionserverID());
-        response.put("host", optimalHost.getHost());
-        response.put("port", optimalHost.getPort());
-    } catch (Exception e) {
+        String type = isDML ? RESPONSE_TYPE_DML_REDIRECT : RESPONSE_TYPE_DDL_RESULT;
+        return buildRegionResponse(type, optimalRegion, optimalHost);
+    }
+
+    // 构建正常响应
+    private Map<String, Object> buildRegionResponse(String type, RegionServerInfo region, HostPortStatus host) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("type", type);
+        response.put("regionId", region.getRegionserverID());
+        response.put("host", host.getHost());
+        response.put("port", host.getPort());
+        return response;
+    }
+
+    // 构建错误响应
+    private Map<String, Object> buildErrorResponse(String message) {
+        Map<String, Object> response = new HashMap<>();
         response.put("type", RESPONSE_TYPE_ERROR);
-        response.put("message", "DDL dispatch failed: " + e.getMessage());
-    }
-    return response;
-}
-    
-    private RegionServerInfo findOptimalRegionServer() {
-        Map<String, RegionServerInfo> onlineRegions = regionWatcher.getOnlineRegions();
-        if (onlineRegions.isEmpty()) return null;
-
-        return onlineRegions.values().stream()
-            .min(Comparator.comparingInt(region -> 
-                region.getHostsPortsStatusList().stream()
-                    .mapToInt(HostPortStatus::getConnections)
-                    .min()
-                    .orElse(Integer.MAX_VALUE)))
-            .orElse(null);
+        response.put("message", message);
+        return response;
     }
 
+    // 找到负载最小的副本
     private HostPortStatus findOptimalHost(RegionServerInfo region) {
         return region.getHostsPortsStatusList().stream()
-            .min(Comparator.comparingInt(HostPortStatus::getConnections))
-            .orElse(region.getHostsPortsStatusList().get(0));
+                .min(Comparator.comparingInt(HostPortStatus::getConnections))
+                .orElse(region.getHostsPortsStatusList().get(0));
     }
 
+    // 判断是否为 DML
     private boolean isDML(String sql) {
         String trimmedSql = sql.trim().toUpperCase();
-        return trimmedSql.startsWith("SELECT") || 
-               trimmedSql.startsWith("INSERT") ||
-               trimmedSql.startsWith("UPDATE") || 
-               trimmedSql.startsWith("DELETE");
+        return trimmedSql.startsWith("SELECT") ||
+                trimmedSql.startsWith("INSERT") ||
+                trimmedSql.startsWith("UPDATE") ||
+                trimmedSql.startsWith("DELETE");
     }
 }

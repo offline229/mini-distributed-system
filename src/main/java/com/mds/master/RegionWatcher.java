@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mds.common.RegionServerInfo;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
-import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
 
 import java.util.Map;
@@ -15,19 +14,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RegionWatcher {
+    // 监听器的基础路径
     private static final String BASE_PATH = "/mds/regions-meta";
-    private static final long HEARTBEAT_TIMEOUT = 30_000; // 30秒超时
-    private final CuratorFramework client;
+    // 心跳超时的时间间隔——30秒超时
+    private static final long HEARTBEAT_TIMEOUT = 30_000;
+    // 存储在线的 RegionServer 信息
     private final Map<String, RegionServerInfo> onlineRegions = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private PathChildrenCache cache;
-    private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private PathChildrenCache cache;    // 监听器缓存
+    private final AtomicBoolean isRunning = new AtomicBoolean(false);   // 监听器是否正在运行
+    // 定时任务调度器
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final CuratorFramework client;  // ZooKeeper 客户端
+    private final ObjectMapper objectMapper = new ObjectMapper();   // JSON 解析器
 
+    // 构造函数
     public RegionWatcher(CuratorFramework client) {
         this.client = client;
     }
 
+    // 启动监听器
     public void startWatching() throws Exception {
         if (!isRunning.compareAndSet(false, true)) {
             System.out.println("[RegionWatcher] 监听器已在运行中");
@@ -42,20 +47,23 @@ public class RegionWatcher {
                     .forPath(BASE_PATH);
             }
 
+            // 创建 PathChildrenCache 监听器
             cache = new PathChildrenCache(client, BASE_PATH, true);
+            // 设置数据缓存
             cache.getListenable().addListener(createCacheListener());
+            // 启动监听器
             cache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
-
             // 启动心跳超时检查任务
             scheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, HEARTBEAT_TIMEOUT, HEARTBEAT_TIMEOUT, TimeUnit.MILLISECONDS);
 
             System.out.println("[RegionWatcher] 已启动监听器，初始 Region 数量：" + onlineRegions.size());
         } catch (Exception e) {
-            isRunning.set(false);
+            isRunning.set(false);   // 启动失败时重置状态
             throw new RuntimeException("[RegionWatcher] 启动失败: " + e.getMessage(), e);
         }
     }
 
+    // 停止监听器
     public void stop() {
         if (!isRunning.compareAndSet(true, false)) {
             return;
@@ -64,28 +72,32 @@ public class RegionWatcher {
         try {
             scheduler.shutdownNow(); // 停止定时任务
             if (cache != null) {
-                cache.close();
-                cache = null;
+                cache.close();  // 关闭监听器
+                cache = null;   // 清空引用
             }
-            onlineRegions.clear();
+            onlineRegions.clear();  // 清空在线 RegionServer 信息
             System.out.println("[RegionWatcher] 已停止监听器");
         } catch (Exception e) {
             System.err.println("[RegionWatcher] 停止监听器时发生错误: " + e.getMessage());
         }
     }
 
+    // 获取当前 RegionWatcher 是否在运行
     public boolean isRunning() {
         return isRunning.get();
     }
 
+    // 获取在线的 RegionServer 信息
     public Map<String, RegionServerInfo> getOnlineRegions() {
         return onlineRegions;
     }
 
+    // 根据regionserverId获取所有在线的 RegionServer
     public RegionServerInfo getRegionById(String regionserverId) {
         return onlineRegions.get(regionserverId);
     }
 
+    // 根据副本key获取所有在线的 RegionServer
     public RegionServerInfo findRegionServerByReplicaKey(String replicaKey) {
         return onlineRegions.values().stream()
                 .filter(region -> replicaKey.equals(region.getReplicaKey()))
@@ -93,6 +105,7 @@ public class RegionWatcher {
                 .orElse(null);
     }
 
+    // 检查心跳超时
     public void checkHeartbeatTimeout() {
         if (!isRunning.get()) return;
 
@@ -117,6 +130,7 @@ public class RegionWatcher {
         });
     }
 
+    // 创建 PathChildrenCache 监听器
     private PathChildrenCacheListener createCacheListener() {
         return (client, event) -> {
             if (!isRunning.get()) return;
@@ -125,6 +139,7 @@ public class RegionWatcher {
                 String path = event.getData() != null ? event.getData().getPath() : null;
                 if (path == null) return;
 
+                // 处理不同类型的事件
                 switch (event.getType()) {
                     case CHILD_ADDED -> handleChildAdded(path, event.getData().getData());
                     case CHILD_UPDATED -> handleChildUpdated(path, event.getData().getData());
@@ -141,6 +156,7 @@ public class RegionWatcher {
         };
     }
 
+    // 处理 CHILD_ADDED 事件
     private void handleChildAdded(String path, byte[] data) {
         try {
             RegionServerInfo info = objectMapper.readValue(data, RegionServerInfo.class);
@@ -151,6 +167,7 @@ public class RegionWatcher {
         }
     }
 
+    // 处理 CHILD_UPDATED 事件
     private void handleChildUpdated(String path, byte[] data) {
         try {
             RegionServerInfo updatedInfo = objectMapper.readValue(data, RegionServerInfo.class);
@@ -171,6 +188,7 @@ public class RegionWatcher {
         }
     }
 
+    // 处理 CHILD_REMOVED 事件
     private void handleChildRemoved(String path) {
         String regionserverId = extractRegionServerId(path);
         RegionServerInfo removed = onlineRegions.remove(regionserverId);
@@ -179,10 +197,12 @@ public class RegionWatcher {
         }
     }
 
+    // 处理连接丢失事件
     private void handleConnectionLost() {
         System.err.println("[RegionWatcher] 与ZooKeeper的连接已断开");
     }
 
+    // 处理重新连接事件
     private void handleReconnected() {
         System.out.println("[RegionWatcher] 已重新连接到ZooKeeper");
         try {
@@ -192,6 +212,7 @@ public class RegionWatcher {
         }
     }
 
+    // 刷新缓存
     private void refreshCache() throws Exception {
         onlineRegions.clear();
         if (cache != null) {
@@ -199,14 +220,9 @@ public class RegionWatcher {
         }
     }
 
+    // 提取 RegionServer ID
     private String extractRegionServerId(String path) {
         return path.substring(path.lastIndexOf("/") + 1);
     }
 
-
-    //for testing
-    // Add this method to the RegionWatcher class
-    public org.apache.curator.framework.recipes.cache.PathChildrenCache createPathChildrenCache(String path, boolean cacheData) {
-        return new org.apache.curator.framework.recipes.cache.PathChildrenCache(client, path, cacheData);
-    }
 }
