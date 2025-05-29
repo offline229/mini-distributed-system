@@ -14,7 +14,7 @@ public class MasterDispatcher {
 
     private final RegionWatcher regionWatcher;
     private final MetaManager metaManager;
-    private volatile boolean isRunning = false;     // 是否正在运行
+    private volatile boolean isRunning = false; // 是否正在运行
 
     public MasterDispatcher(RegionWatcher regionWatcher) {
         this.regionWatcher = regionWatcher;
@@ -63,12 +63,11 @@ public class MasterDispatcher {
 
         // 找到负载最小的 RegionServer
         RegionServerInfo optimalRegion = allRegions.stream()
-            .min(Comparator.comparingInt(region ->
-                region.getHostsPortsStatusList().stream()
-                    .mapToInt(HostPortStatus::getConnections)
-                    .min()
-                    .orElse(Integer.MAX_VALUE)))
-            .orElse(null);
+                .min(Comparator.comparingInt(region -> region.getHostsPortsStatusList().stream()
+                        .mapToInt(HostPortStatus::getConnections)
+                        .min()
+                        .orElse(Integer.MAX_VALUE)))
+                .orElse(null);
 
         if (optimalRegion == null) {
             return buildErrorResponse("No available RegionServer");
@@ -107,16 +106,16 @@ public class MasterDispatcher {
     // 找到负载最小的副本
     private HostPortStatus findOptimalHost(RegionServerInfo region) {
         return region.getHostsPortsStatusList().stream()
-            .min(Comparator.comparingInt(HostPortStatus::getConnections))
-            .orElse(region.getHostsPortsStatusList().get(0));
+                .min(Comparator.comparingInt(HostPortStatus::getConnections))
+                .orElse(region.getHostsPortsStatusList().get(0));
     }
 
     // 判断是否为 DML
     private boolean isDML(String sql) {
         String trimmedSql = sql.trim().toUpperCase();
         return trimmedSql.startsWith("SELECT") ||
-               trimmedSql.startsWith("INSERT") ||
-               trimmedSql.startsWith("UPDATE") ||
-               trimmedSql.startsWith("DELETE");
+                trimmedSql.startsWith("INSERT") ||
+                trimmedSql.startsWith("UPDATE") ||
+                trimmedSql.startsWith("DELETE");
     }
 }
